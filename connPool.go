@@ -203,8 +203,8 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	rpcConn.Close()
 	close(rpcConn.pendingRequests)
 	for _, resp := range rmap {
-		resp.done <- true
 		resp.err = ErrPendingWireBroken
+		resp.done <- true
 	}
 }
 
