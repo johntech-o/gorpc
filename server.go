@@ -106,9 +106,14 @@ func (server *Server) ServeLoop(conn *ConnDriver) {
 			argIsValue = true
 		}
 		err = conn.ReadRequestBody(argv.Interface())
-		if err != nil && !isNetError(err) {
-			server.replyCmd(conn, reqHeader.Seq, &Error{400, ErrTypeCritical, err.Error()}, CmdTypeErr)
-			continue
+		if err != nil {
+			if isNetError(err) {
+				log.Println("read request body with net error:", err, "method:", reqHeader.Method)
+				goto fail
+			} else {
+				server.replyCmd(conn, reqHeader.Seq, &Error{400, ErrTypeCritical, err.Error()}, CmdTypeErr)
+				continue
+			}
 		}
 		if argIsValue {
 			argv = argv.Elem()
