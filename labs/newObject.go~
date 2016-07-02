@@ -1,0 +1,48 @@
+package main
+
+import (
+	"sync"
+	"testing"
+)
+
+// new object in goroutines then view gc statistics
+
+type Object struct {
+	a    string
+	b    int
+	c    map[string]string
+	d    interface{}
+	e    *string
+	f    []string
+	next *Object
+}
+
+type objectPool struct {
+	head *Object
+	sync.Mutex
+}
+
+var freeObjects objectPool
+
+func newObjectInHeap() *Object {
+	return &Object{}
+}
+
+func newObjectInPool() *Object {
+	ob := freeObjects.head
+	if ob == nil {
+		return &Object{}
+	} else {
+		freeObjects.head = freeObjects.pool.next
+		*ob = Object{}
+	}
+}
+
+func newObjectInStack(ob *Object) *Object {
+	ob := &Object{a: "aaaaa"}
+	*ob = Object{}
+}
+
+func TestIfObjectInStack(t testing.T) {
+
+}
