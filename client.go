@@ -94,17 +94,26 @@ func (this *Client) RemoveServers(addresses map[string]struct{}) {
 }
 
 func (this *Client) SetServerNetOptions(netOptions *NetOptions) error {
+	this.Lock()
 	this.serverOptions = netOptions
+	this.Unlock()
 	return nil
 }
 
 func (this *Client) SetServiceNetOptions(service string, netOptions *NetOptions) error {
+	this.Lock()
 	this.serviceOptions[service] = netOptions
+	this.Unlock()
 	return nil
 }
 
 func (this *Client) SetMethodNetOptinons(service, method string, netOptions *NetOptions) error {
+	this.Lock()
+	if _, ok := this.methodOptions[service][method]; !ok {
+		this.methodOptions[service] = make(map[string]*NetOptions)
+	}
 	this.methodOptions[service][method] = netOptions
+	this.Unlock()
 	return nil
 }
 
@@ -317,10 +326,14 @@ func (this *Client) getTimeout(service, method string) (time.Duration, time.Dura
 	}
 
 final:
-	option := make(map[string]*NetOptions)
-	option[method] = netOption
 	this.Lock()
-	this.methodOptions[service] = option
+	if serviceNetOption, ok := this.methodOptions[service]; ok {
+		serviceNetOption[method] = netOption
+	} else {
+		option := make(map[string]*NetOptions)
+		option[method] = netOption
+		this.methodOptions[service] = option
+	}
 	this.Unlock()
 	return netOption.connectTimeout, netOption.readTimeout, netOption.writeTimeout
 }
