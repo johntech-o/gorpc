@@ -33,111 +33,73 @@ func newObjectInHeap() *Object {
 }
 
 func newObjectInPool() *Object {
+	freeObjects.Lock()
 	ob := freeObjects.head
 	if ob == nil {
-		return &Object{}
+		ob = &Object{}
 	} else {
 		freeObjects.head = freeObjects.head.next
 		*ob = Object{}
 	}
+	freeObjects.Unlock()
 	return ob
 }
 
-func resetObject(ob *Object) *Object {
-
-	tmpObs := make([]Object, 1000)
-	for i := 0; i <= 1000; i++ {
-		tmpObs = append(tmpObs, Object{})
-	}
-	*ob = tmpObs[0]
-	//	fmt.Printf("tmpOb: %p\n", &tmpOb)
-
-	//	fmt.Printf("ob in resetObject func: %p\n", ob)
-	return ob
+func freeObject(ob *Object) {
+	freeObjects.Lock()
+	ob.next = freeObjects.head
+	freeObjects.head = ob
+	freeObjects.Unlock()
 }
+
+// list amount of goroutines and memory occupied
 func TestGoroutineCost(t *testing.T) {
-	//	pprof()
-	pprof.DoMemoryStats(true)
-	for i := 0; i < 100000; i++ {
+	amount := 100000
+	pprof.MemStats()
+	fmt.Println(pprof.Current())
+	fmt.Printf("create goroutines amount: %d\n", amount)
+	for i := 0; i < amount; i++ {
 		go func() {
 			time.Sleep(time.Second * 10)
 		}()
 	}
-	println()
-	time.Sleep(time.Second * 10)
-	//	pprof()
-	pprof.DoMemoryStats(true)
+	time.Sleep(time.Second * 2)
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.TotalAlloc)
+	fmt.Println(pprof.Current())
+	pprof.ProcessStats()
+}
+
+// malloc a object in heap
+func expectMallocInHeap(ob *Object) *Object {
+	new := &Object{}
+	return new
+}
+
+// malloc a object in stack
+func expectMallocInStack(ob *Object) *Object {
+	*ob = Object{}
+	return ob
 }
 
 func TestIfObjectInStack(t *testing.T) {
-	//	pprof()
-	//	resetedOb := resetObject(ob)
-	//	if resetedOb.a == "" {
-	//	}
-	//	fmt.Printf("ob: %p,resetedOb:%p,obContest: %v\n", ob, resetedOb, ob)
-	for i := 0; i < 1; i++ {
-		ob := &Object{a: "aaa", b: 10}
-		go resetObject(ob)
-		//time.Sleep(time.Microsecond)
-	}
-	fmt.Println()
-	time.Sleep(time.Second)
-	//	pprof()
-	pprof.DoMemoryStats(true)
-}
-
-/*
-func pprof() {
-	var memoryStats runtime.MemStats
-	runtime.ReadMemStats(&memoryStats)
-	s := reflect.ValueOf(memoryStats)
-	filterFields := map[string]struct{}{
-		//		"TotalAlloc": struct{}{},
-		"Alloc": struct{}{}, // clear by gc
-		//"Mallocs":    struct{}{},
-		"Frees": struct{}{},
-
-		"BySize":   struct{}{},
-		"Lookups":  struct{}{},
-		"Sys":      struct{}{},
-		"OtherSys": struct{}{},
-
-		"PauseNs":  struct{}{},
-		"PauseEnd": struct{}{},
-		// "PauseTotalNs":  struct{}{},
-		"LastGC":        struct{}{},
-		"NextGC":        struct{}{},
-		"NumGC":         struct{}{},
-		"GCCPUFraction": struct{}{},
-		"GCSys":         struct{}{},
-		"EnableGC":      struct{}{},
-		"DebugGC":       struct{}{},
-
-		"MCacheSys":   struct{}{},
-		"MCacheInuse": struct{}{},
-		"BuckHashSys": struct{}{},
-
-		"HeapReleased": struct{}{},
-		"HeapSys":      struct{}{},
-		"HeapIdle":     struct{}{},
-		//"HeapInuse":    struct{}{},
-		//"HeapObjects": struct{}{},
-		"HeapAlloc": struct{}{},
-
-		//		"StackSys":   struct{}{},
-		//		"StackInuse": struct{}{},
-
-		"MSpanSys":   struct{}{},
-		"MSpanInuse": struct{}{},
-	}
-	typeOfT := s.Type()
-	for i := 0; i < s.NumField(); i++ {
-		f := s.Field(i)
-		if _, ok := filterFields[typeOfT.Field(i).Name]; ok {
-			continue
+	ob := &Object{}
+	fmt.Println("----------------expect malloc in heap--------------")
+	pprof.MemStats()
+	for i := 0; i < 100000; i++ {
+		s := expectMallocInHeap(ob)
+		if s.a == "aaa" {
+			fmt.Println("sssss")
 		}
-		fmt.Printf("%d: %s %s = %v\n", i, typeOfT.Field(i).Name, f.Type(), f.Interface())
 	}
-	return
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects)
+	fmt.Println("------------------------------expect malloc in stack")
+	pprof.MemStats()
+	for i := 0; i < 100000; i++ {
+		expectMallocInStack(ob)
+	}
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects)
+	pprof.ProcessStats()
 }
-*/
