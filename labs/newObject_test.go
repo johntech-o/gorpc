@@ -56,7 +56,7 @@ func freeObject(ob *Object) {
 func TestGoroutineCost(t *testing.T) {
 	amount := 100000
 	pprof.MemStats()
-	fmt.Println(pprof.Current())
+	// fmt.Println(pprof.Current())
 	fmt.Printf("create goroutines amount: %d\n", amount)
 	for i := 0; i < amount; i++ {
 		go func() {
@@ -66,8 +66,9 @@ func TestGoroutineCost(t *testing.T) {
 	time.Sleep(time.Second * 2)
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.TotalAlloc)
-	fmt.Println(pprof.Current())
+	// fmt.Println(pprof.Current())
 	pprof.ProcessStats()
+	fmt.Print("\n\n")
 }
 
 // malloc a object in heap
@@ -93,13 +94,14 @@ func TestIfObjectInStack(t *testing.T) {
 		}
 	}
 	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects)
-	fmt.Println("------------------------------expect malloc in stack")
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	fmt.Println("--------------  expect malloc in stack--------------")
 	pprof.MemStats()
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 100; i++ {
 		expectMallocInStack(ob)
 	}
 	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects)
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
 	pprof.ProcessStats()
+	fmt.Print("\n\n")
 }
