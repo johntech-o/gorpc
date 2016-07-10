@@ -22,7 +22,8 @@ type Object struct {
 }
 
 type objectPool struct {
-	head *Object
+	head  *Object
+	count int
 	sync.Mutex
 }
 
@@ -32,6 +33,13 @@ func newObjectInHeap() *Object {
 	return &Object{}
 }
 
+func lenPool() int {
+	freeObjects.Lock()
+	count := freeObjects.count
+	freeObjects.Unlock()
+	return count
+}
+
 func newObjectFromPool() *Object {
 	freeObjects.Lock()
 	ob := freeObjects.head
@@ -39,7 +47,8 @@ func newObjectFromPool() *Object {
 		ob = &Object{}
 	} else {
 		freeObjects.head = freeObjects.head.next
-		*ob = Object{}
+		freeObjects.count -= 1
+		//		*ob = Object{}
 	}
 	freeObjects.Unlock()
 	return ob
@@ -49,6 +58,7 @@ func freeObject(ob *Object) {
 	freeObjects.Lock()
 	ob.next = freeObjects.head
 	freeObjects.head = ob
+	freeObjects.count += 1
 	freeObjects.Unlock()
 }
 
@@ -56,19 +66,124 @@ func freeObject(ob *Object) {
 func TestGoroutineCost(t *testing.T) {
 	amount := 100000
 	pprof.MemStats()
-	// fmt.Println(pprof.Current())
+	fmt.Println(pprof.Current())
 	fmt.Printf("create goroutines amount: %d\n", amount)
+	var wg sync.WaitGroup
 	for i := 0; i < amount; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			time.Sleep(time.Second * 10)
 		}()
 	}
-	time.Sleep(time.Second * 2)
+	wg.Wait()
+	fmt.Println(pprof.Current())
+	pprof.ProcessStats()
+
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.TotalAlloc)
-	// fmt.Println(pprof.Current())
-	pprof.ProcessStats()
 	fmt.Print("\n\n")
+}
+
+// test malloc in heap or stack function
+func TestIfObjectInStack(t *testing.T) {
+	amount := 10000
+	for i := 0; i < amount; i++ {
+		ob := Object{}
+		if ob.a == "aaa" {
+			ob.a = "bbb"
+		}
+		freeObject(&ob)
+	}
+	fmt.Println(lenPool())
+
+	ob := &Object{}
+	fmt.Println("----------------expect malloc in heap--------------")
+	pprof.MemStats()
+
+	for i := 0; i < amount; i++ {
+		s := expectMallocInHeap(ob)
+		// never hit this statment use s to prevent compile optimize code
+		if s.a == "aaa" {
+			fmt.Println("sssss")
+		}
+	}
+
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	fmt.Println("--------------  expect malloc in stack--------------")
+	pprof.MemStats()
+
+	for i := 0; i < amount; i++ {
+		expectMallocInStack(ob)
+	}
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	pprof.ProcessStats()
+
+	fmt.Println("----------------expect malloc in mem pool--------------")
+	pprof.MemStats()
+	for i := 0; i < amount; i++ {
+		s := newObjectFromPool()
+		// never hit this statment use s to prevent compile optimize code
+		if s.a == "aaa" {
+			fmt.Println("sssss")
+		}
+		freeObject(s)
+	}
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	fmt.Print("\n\n")
+}
+
+// test malloc use object pool
+func TestObjectPool(t *testing.T) {
+	time.Sleep(time.Second)
+	amount := 1000
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		fmt.Println("--------------malloc object without object pool-------------")
+		pprof.MemStats()
+		for i := 0; i < amount; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 1000; i++ {
+					ob := new(Object)
+					if ob.a == "aaa" {
+						ob.a = "bbb"
+					}
+				}
+
+			}()
+
+		}
+		wg.Wait()
+		pprof.MemStats()
+		pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	}
+	for i := 0; i < 5; i++ {
+		fmt.Println("----------------malloc object use object pool------------ ")
+		pprof.MemStats()
+		for i := 0; i < amount; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 1000; i++ {
+					ob := newObjectFromPool()
+					if ob.a == "aaa" {
+						ob.a = "bbb"
+					}
+					freeObject(ob)
+				}
+
+			}()
+		}
+		wg.Wait()
+		pprof.MemStats()
+		pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	}
+	fmt.Println("\n\n")
 }
 
 // malloc a object in heap
@@ -82,60 +197,4 @@ func expectMallocInStack(ob *Object) *Object {
 	*ob = Object{}
 	// _ = make([]Object, 1000)
 	return ob
-}
-
-// test malloc in heap or stack function
-func TestIfObjectInStack(t *testing.T) {
-	ob := &Object{}
-	fmt.Println("----------------expect malloc in heap--------------")
-	pprof.MemStats()
-
-	for i := 0; i < 10000; i++ {
-		s := expectMallocInHeap(ob)
-		// never hit this statment use s to prevent compile optimize code
-		if s.a == "aaa" {
-			fmt.Println("sssss")
-		}
-	}
-
-	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
-	fmt.Println("--------------  expect malloc in stack--------------")
-	pprof.MemStats()
-
-	for i := 0; i < 10000; i++ {
-		expectMallocInStack(ob)
-	}
-	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
-	pprof.ProcessStats()
-	fmt.Print("\n\n")
-}
-
-// test malloc use object pool
-func TestObjectPool(t *testing.T) {
-
-	pprof.MemStats()
-	for i := 0; i < 10000; i++ {
-		go func() {
-			ob := new(Object)
-			ob.a = "ssss"
-			time.Sleep(time.Second * 2)
-		}()
-
-	}
-	time.Sleep(time.Second * 2)
-	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
-	for i := 0; i < 10000; i++ {
-		go func() {
-			ob := newObjectFromPool()
-			ob.a = "bbb"
-			freeObject(ob)
-			time.Sleep(time.Second * 2)
-		}()
-	}
-	time.Sleep(time.Second * 2)
-	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
 }
