@@ -32,7 +32,7 @@ func newObjectInHeap() *Object {
 	return &Object{}
 }
 
-func newObjectInPool() *Object {
+func newObjectFromPool() *Object {
 	freeObjects.Lock()
 	ob := freeObjects.head
 	if ob == nil {
@@ -80,28 +80,62 @@ func expectMallocInHeap(ob *Object) *Object {
 // malloc a object in stack
 func expectMallocInStack(ob *Object) *Object {
 	*ob = Object{}
+	// _ = make([]Object, 1000)
 	return ob
 }
 
+// test malloc in heap or stack function
 func TestIfObjectInStack(t *testing.T) {
 	ob := &Object{}
 	fmt.Println("----------------expect malloc in heap--------------")
 	pprof.MemStats()
-	for i := 0; i < 100000; i++ {
+
+	for i := 0; i < 10000; i++ {
 		s := expectMallocInHeap(ob)
+		// never hit this statment use s to prevent compile optimize code
 		if s.a == "aaa" {
 			fmt.Println("sssss")
 		}
 	}
+
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
 	fmt.Println("--------------  expect malloc in stack--------------")
 	pprof.MemStats()
-	for i := 0; i < 100; i++ {
+
+	for i := 0; i < 10000; i++ {
 		expectMallocInStack(ob)
 	}
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
 	pprof.ProcessStats()
 	fmt.Print("\n\n")
+}
+
+// test malloc use object pool
+func TestObjectPool(t *testing.T) {
+
+	pprof.MemStats()
+	for i := 0; i < 10000; i++ {
+		go func() {
+			ob := new(Object)
+			ob.a = "ssss"
+			time.Sleep(time.Second * 2)
+		}()
+
+	}
+	time.Sleep(time.Second * 2)
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
+	for i := 0; i < 10000; i++ {
+		go func() {
+			ob := newObjectFromPool()
+			ob.a = "bbb"
+			freeObject(ob)
+			time.Sleep(time.Second * 2)
+		}()
+	}
+	time.Sleep(time.Second * 2)
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc)
 }
