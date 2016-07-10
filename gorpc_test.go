@@ -1,3 +1,6 @@
+/*
+go test -v github.com/johntech-o/gorpc
+*/
 package gorpc
 
 import (
@@ -13,6 +16,10 @@ import (
 )
 
 var client *Client
+
+const (
+	ExecAmount = 10000
+)
 
 func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -162,7 +169,7 @@ func TestInvalidParams(t *testing.T) {
 }
 
 func TestEchoStruct(t *testing.T) {
-	EchoStruct(t, 10000)
+	EchoStruct(t, ExecAmount)
 }
 
 func EchoStruct(t *testing.T, testCount int) {

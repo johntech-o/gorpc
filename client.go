@@ -1,7 +1,7 @@
 // @todo while conn broke ,move the pending request to other -> done
 // @todo call with retry setting -> done
 // @todo send only call -> done
-// @todo calculate Bandwidth consumption
+// @todo calculate Bandwidth consumpTionJ
 
 package gorpc
 
