@@ -18,7 +18,7 @@ import (
 var client *Client
 
 const (
-	ExecAmount = 500000
+	ExecAmount = 1000000
 )
 
 func init() {
