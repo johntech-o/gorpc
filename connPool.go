@@ -143,9 +143,9 @@ func (cp *ConnPool) RemoveConn(conn *ConnDriver) {
 // serve read for rpc connection
 func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	var err error
-	respHeader, respHeaderEmpty := &ResponseHeader{}, ResponseHeader{}
+	respHeader := &ResponseHeader{}
 	for {
-		*respHeader = respHeaderEmpty
+		respHeader.Error, respHeader.ReplyType, respHeader.Seq = nil, 0, 0
 		rpcConn.Lock()
 		if rpcConn.netError != nil {
 			err = rpcConn.netError
@@ -212,7 +212,7 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 // serve write connection
 func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 	var err error
-	var request *Request
+
 	for {
 		select {
 		case request, ok := <-rpcConn.pendingRequests:
@@ -249,15 +249,9 @@ func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 		case <-rpcConn.exitWriteNotify:
 			goto fail
 		}
-		if request != nil {
-			rpcConn.FreeRequestHeader(request.header)
-		}
 
 	}
 fail:
-	if request != nil {
-		rpcConn.FreeRequestHeader(request.header)
-	}
 	if err == nil {
 		return
 	}

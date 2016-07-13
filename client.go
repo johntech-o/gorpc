@@ -150,9 +150,6 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	}
 	// init request
 	rh := rpcConn.NewRequestHeader()
-	if rh == nil {
-		panic("rh == nil")
-	}
 	request = NewRequest(rh)
 	request.header.Service = service
 	request.header.Method = method
@@ -186,9 +183,8 @@ Retry:
 		goto final
 	}
 final:
-	// fmt.Println("client error: ", err)
 	if err == nil {
-		// can free request/presp object
+		rpcConn.FreeRequestHeader(request.header)
 		return nil
 	}
 	if err == ErrRequestTimeout {

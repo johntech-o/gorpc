@@ -189,6 +189,7 @@ func (server *Server) callService(conn *ConnDriver, seq uint64, service *service
 	conn.Lock()
 	err := server.SendFrame(conn, respHeader, replyv)
 	conn.Unlock()
+	conn.FreeResponseHeader(respHeader)
 	if err != nil && !isNetError(err) {
 		log.Fatalln("encoding error:" + err.Error())
 	}

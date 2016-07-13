@@ -44,6 +44,7 @@ type RequestHeader struct {
 
 type RequestHeaderSlice struct {
 	sync.Mutex
+	count   int
 	headers []*RequestHeader
 }
 
@@ -56,6 +57,7 @@ func (rhs *RequestHeaderSlice) NewRequestHeader() *RequestHeader {
 	}
 	h := rhs.headers[len-1]
 	rhs.headers = rhs.headers[0 : len-1]
+	rhs.count += 1
 	rhs.Unlock()
 	return h
 }
@@ -69,6 +71,7 @@ func (rhs *RequestHeaderSlice) FreeRequestHeader(rh *RequestHeader) {
 	}
 	rhs.headers = append(rhs.headers, rh)
 	rhs.Unlock()
+
 	return
 }
 func (reqheader *RequestHeader) IsPing() bool {
