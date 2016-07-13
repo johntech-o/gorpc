@@ -45,6 +45,8 @@ type ConnDriver struct {
 	callCount        int // for priority
 	workingElement   *list.Element
 	idleElement      *list.Element
+	*RequestHeaderSlice
+	*ResponseHeaderSlice
 }
 
 func (conn *Connection) Write(p []byte) (n int, err error) {
@@ -67,7 +69,7 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 		c = conn
 	}
 	buf := bufio.NewWriter(c)
-	return &ConnDriver{
+	cd := &ConnDriver{
 		TCPConn:          conn,
 		writeBuf:         buf,
 		dec:              gob.NewDecoder(c),
@@ -76,6 +78,14 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 		pendingResponses: make(map[uint64]*PendingResponse),
 		pendingRequests:  make(chan *Request, MaxPendingRequest),
 	}
+	// server end only use responseHeaderSlice as objectPool whenerver  a client end just use requestHeaderSlice
+	if server != nil {
+		cd.ResponseHeaderSlice = &ResponseHeaderSlice{headers: make([]*ResponseHeader, 500)[0:0]}
+	} else {
+		cd.RequestHeaderSlice = &RequestHeaderSlice{headers: make([]*RequestHeader, 500)[0:0]}
+	}
+	return cd
+
 }
 
 func (conn *ConnDriver) Sequence() uint64 {

@@ -68,8 +68,9 @@ func (server *Server) ServeLoop(conn *ConnDriver) {
 	var err error
 	var methodType *methodType
 	var service *service
+	reqHeader, RequestHeaderEmpty := &RequestHeader{}, RequestHeader{}
 	for {
-		reqHeader := NewRequestHeader()
+		*reqHeader = RequestHeaderEmpty
 		if err = conn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout)); err != nil {
 			goto fail
 		}
@@ -135,8 +136,7 @@ fail:
 }
 
 func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, cmd string) {
-
-	respHeader := NewResponseHeader()
+	respHeader := conn.NewResponseHeader()
 	respHeader.Seq = seq
 	switch cmd {
 	case CmdTypePing:
@@ -146,11 +146,11 @@ func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, c
 	case CmdTypeErr:
 		respHeader.ReplyType = ReplyTypeAck
 		respHeader.Error = serverErr
-		// fmt.Println("replycmd send respHeader type error")
 	}
 	conn.Lock()
 	server.SendFrame(conn, respHeader, reflect.ValueOf(nil))
 	conn.Unlock()
+	conn.FreeResponseHeader(respHeader)
 	return
 }
 
@@ -171,7 +171,7 @@ func (server *Server) callService(conn *ConnDriver, seq uint64, service *service
 	// The return value for the method is an error.
 	errInter := returnValues[0].Interface()
 
-	respHeader := NewResponseHeader()
+	respHeader := conn.NewResponseHeader()
 	respHeader.ReplyType = ReplyTypeData
 	respHeader.Seq = seq
 	if errInter != nil {

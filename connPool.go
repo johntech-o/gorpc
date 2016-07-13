@@ -143,7 +143,9 @@ func (cp *ConnPool) RemoveConn(conn *ConnDriver) {
 // serve read for rpc connection
 func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	var err error
+	respHeader, respHeaderEmpty := &ResponseHeader{}, ResponseHeader{}
 	for {
+		*respHeader = respHeaderEmpty
 		rpcConn.Lock()
 		if rpcConn.netError != nil {
 			err = rpcConn.netError
@@ -151,7 +153,6 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 			break
 		}
 		rpcConn.Unlock()
-		respHeader := NewResponseHeader()
 		// @todo 读写超时按照最大的顺延或者给服务端最大值
 		if err = rpcConn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout + time.Second*10)); err != nil {
 			break
@@ -211,6 +212,7 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 // serve write connection
 func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 	var err error
+	var request *Request
 	for {
 		select {
 		case request, ok := <-rpcConn.pendingRequests:
@@ -247,8 +249,15 @@ func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 		case <-rpcConn.exitWriteNotify:
 			goto fail
 		}
+		if request != nil {
+			rpcConn.FreeRequestHeader(request.header)
+		}
+
 	}
 fail:
+	if request != nil {
+		rpcConn.FreeRequestHeader(request.header)
+	}
 	if err == nil {
 		return
 	}

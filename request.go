@@ -1,13 +1,14 @@
 package gorpc
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const (
 	RequestSendOnly   int16 = 1
-	MaxPendingRequest int   = 500
+	MaxPendingRequest int   = 1000
 )
 
 type Request struct {
@@ -18,10 +19,10 @@ type Request struct {
 	pending      int32
 }
 
-func NewRequest() *Request {
+func NewRequest(header *RequestHeader) *Request {
 	return &Request{
 		pending:      1,
-		header:       NewRequestHeader(),
+		header:       header,
 		writeTimeout: DefaultWriteTimeout,
 	}
 }
@@ -41,10 +42,35 @@ type RequestHeader struct {
 	CallType int16
 }
 
-func NewRequestHeader() *RequestHeader {
-	return &RequestHeader{}
+type RequestHeaderSlice struct {
+	sync.Mutex
+	headers []*RequestHeader
 }
 
+func (rhs *RequestHeaderSlice) NewRequestHeader() *RequestHeader {
+	rhs.Lock()
+	len := len(rhs.headers)
+	if len == 0 {
+		rhs.Unlock()
+		return &RequestHeader{}
+	}
+	h := rhs.headers[len-1]
+	rhs.headers = rhs.headers[0 : len-1]
+	rhs.Unlock()
+	return h
+}
+
+func (rhs *RequestHeaderSlice) FreeRequestHeader(rh *RequestHeader) {
+	rh.Service, rh.Method, rh.Seq, rh.CallType = "", "", 0, 0
+	rhs.Lock()
+	if len(rhs.headers) == cap(rhs.headers) {
+		rhs.Unlock()
+		return
+	}
+	rhs.headers = append(rhs.headers, rh)
+	rhs.Unlock()
+	return
+}
 func (reqheader *RequestHeader) IsPing() bool {
 	if reqheader.Service == "go" && reqheader.Method == "p" {
 		return true

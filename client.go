@@ -149,7 +149,11 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 		return err
 	}
 	// init request
-	request = NewRequest()
+	rh := rpcConn.NewRequestHeader()
+	if rh == nil {
+		panic("rh == nil")
+	}
+	request = NewRequest(rh)
 	request.header.Service = service
 	request.header.Method = method
 	if reply == nil {
@@ -213,7 +217,6 @@ func (this *Client) ConnsStatus() string {
 		status[serverAddress] = cp.poolStatus()
 	}
 	this.RUnlock()
-
 	var connsStatus = struct {
 		Result map[string]map[string]uint64
 		Errno  int
@@ -295,7 +298,7 @@ fail:
 
 func (this *Client) writePing(rpcConn *ConnDriver) error {
 	// init request
-	request := NewRequest()
+	request := NewRequest(rpcConn.NewRequestHeader())
 	request.header.Service = "go"
 	request.header.Method = "p"
 	request.header.CallType = RequestSendOnly
