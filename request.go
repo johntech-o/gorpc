@@ -71,7 +71,6 @@ func (rhs *RequestHeaderSlice) FreeRequestHeader(rh *RequestHeader) {
 	}
 	rhs.headers = append(rhs.headers, rh)
 	rhs.Unlock()
-
 	return
 }
 func (reqheader *RequestHeader) IsPing() bool {
