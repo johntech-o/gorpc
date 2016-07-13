@@ -1,6 +1,5 @@
-/*
-go test -v github.com/johntech-o/gorpc
-*/
+// go test -v github.com/johntech-o/gorpc
+
 package gorpc
 
 import (
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/johntech-o/gorpc/pprof"
 )
 
 var client *Client
@@ -169,7 +170,10 @@ func TestInvalidParams(t *testing.T) {
 }
 
 func TestEchoStruct(t *testing.T) {
+	pprof.MemStats()
 	EchoStruct(t, ExecAmount)
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs)
 }
 
 func EchoStruct(t *testing.T, testCount int) {

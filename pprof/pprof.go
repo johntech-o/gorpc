@@ -11,9 +11,11 @@ func init() {
 }
 
 const (
-	TotalAlloc  = "TotalAlloc"
-	HeapObjects = "HeapObjects"
-	StackInuse  = "StackInuse"
+	TotalAlloc   = "TotalAlloc"
+	HeapObjects  = "HeapObjects"
+	StackInuse   = "StackInuse"
+	NumGC        = "NumGC"
+	PauseTotalMs = "PauseTotalMs"
 )
 
 type Stats struct {
@@ -61,7 +63,6 @@ func (s *Stats) DoMemoryStats() {
 			default:
 				fmt.Println(t)
 			}
-
 		case "PauseNs":
 			s.content[s.index]["PauseMs"] = int(memoryStats.PauseNs[(memoryStats.NumGC+255)%256]) / 1e6
 		case "PauseTotalNs":
