@@ -10,8 +10,8 @@ import (
 
 // client  setting
 const (
-	DefaultMaxOpenConns   = 30 // max conns
-	DefaultMaxIdleConns   = 20 // max idle conns
+	DefaultMaxOpenConns   = 100 // max conns
+	DefaultMaxIdleConns   = 50  // max idle conns
 	DefaultReadTimeout    = 30 * time.Second
 	DefaultWriteTimeout   = 30 * time.Second
 	DefaultConnectTimeout = 30 * time.Second // default connect timeout
