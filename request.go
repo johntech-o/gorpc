@@ -44,8 +44,8 @@ type RequestHeader struct {
 
 type RequestHeaderSlice struct {
 	sync.Mutex
-	count   int
 	headers []*RequestHeader
+	connId  string
 }
 
 func (rhs *RequestHeaderSlice) NewRequestHeader() *RequestHeader {
@@ -57,8 +57,8 @@ func (rhs *RequestHeaderSlice) NewRequestHeader() *RequestHeader {
 	}
 	h := rhs.headers[len-1]
 	rhs.headers = rhs.headers[0 : len-1]
-	rhs.count += 1
 	rhs.Unlock()
+
 	return h
 }
 

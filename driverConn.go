@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+const (
+	HeaderPoolSize = 200
+)
+
 type ConnId uint64
 
 func (this *ConnId) Incr() ConnId {
@@ -80,9 +84,9 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 	}
 	// server end only use responseHeaderSlice as objectPool whenerver  a client end just use requestHeaderSlice
 	if server != nil {
-		cd.ResponseHeaderSlice = &ResponseHeaderSlice{headers: make([]*ResponseHeader, 500)[0:0]}
+		cd.ResponseHeaderSlice = &ResponseHeaderSlice{headers: make([]*ResponseHeader, HeaderPoolSize)[0:0], connId: conn.RemoteAddr().String()}
 	} else {
-		cd.RequestHeaderSlice = &RequestHeaderSlice{headers: make([]*RequestHeader, 500)[0:0]}
+		cd.RequestHeaderSlice = &RequestHeaderSlice{headers: make([]*RequestHeader, HeaderPoolSize)[0:0], connId: conn.LocalAddr().String()}
 	}
 	return cd
 

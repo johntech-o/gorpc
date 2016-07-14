@@ -16,8 +16,8 @@ type ResponseHeader struct {
 
 type ResponseHeaderSlice struct {
 	sync.Mutex
-	count   int
 	headers []*ResponseHeader
+	connId  string
 }
 
 func (rhs *ResponseHeaderSlice) NewResponseHeader() *ResponseHeader {
@@ -29,7 +29,6 @@ func (rhs *ResponseHeaderSlice) NewResponseHeader() *ResponseHeader {
 	}
 	h := rhs.headers[len-1]
 	rhs.headers = rhs.headers[0 : len-1]
-	rhs.count += 1
 	rhs.Unlock()
 	return h
 }

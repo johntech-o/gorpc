@@ -226,7 +226,7 @@ func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 				rpcConn.Unlock()
 				continue
 			}
-			// write request
+			//  write request
 			if err = rpcConn.SetWriteDeadline(time.Now().Add(request.writeTimeout)); err != nil {
 				goto fail
 			}
