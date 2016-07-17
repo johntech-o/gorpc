@@ -23,8 +23,10 @@ var (
 	ErrGobParseErr    = &Error{106, ErrTypeCritical, ""}
 	ErrInvalidAddress = &Error{108, ErrTypeCritical, "client invalid address"}
 
-	ErrNetConnectFail = &Error{109, ErrTypeNet, ""}
-	ErrNetReadFail    = &Error{110, ErrTypeNet, ""}
+	ErrNetConnectFail         = &Error{109, ErrTypeNet, ""}
+	ErrNetReadFail            = &Error{110, ErrTypeNet, ""}
+	ErrNetReadDeadlineArrive  = &Error{111, ErrTypeNet, ""}
+	ErrNetWriteDeadlineArrive = &Error{112, ErrTypeNet, ""}
 	// client can retry once after receiving following errors
 	ErrPendingWireBroken  = &Error{111, ErrTypeCanRetry, ""}
 	ErrPendingRequestFull = &Error{121, ErrTypeCanRetry, "client pending request full"}

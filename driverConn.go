@@ -22,11 +22,15 @@ var clientConnId ConnId
 
 type Connection struct {
 	*net.TCPConn
-	server *Server
+	server         *Server
+	timer          *TimeWheel
+	*sync.RWMutex  // protects following
+	readTimeoutCh  <-chan struct{}
+	writeTimeoutCh <-chan struct{}
 }
 
 func NewConnection(conn *net.TCPConn, server *Server) *Connection {
-	return &Connection{conn, server}
+	return &Connection{conn, server, NewTimeWheel(time.Second, 600)}
 }
 
 type ConnDriver struct {
@@ -47,16 +51,27 @@ type ConnDriver struct {
 	idleElement      *list.Element
 }
 
+// for flow control
 func (conn *Connection) Write(p []byte) (n int, err error) {
 	n, err = conn.TCPConn.Write(p)
 	conn.server.status.IncrWriteBytes(uint64(n))
 	return
 }
 
+// for flow control
 func (conn *Connection) Read(p []byte) (n int, err error) {
 	n, err = conn.TCPConn.Read(p)
 	conn.server.status.IncrReadBytes(uint64(n))
 	return
+}
+
+func (conn *Connection) SetWriteDeadline(time time.Time) err {
+	if conn.TimeWheel == nil {
+		conn.SetWriteDeadline(time)
+	}
+	conn.Lock()
+	conn.WriteTimeoutCh = conn.timer.After(time)
+	conn.Unlock()
 }
 
 func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
@@ -81,6 +96,15 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 func (conn *ConnDriver) Sequence() uint64 {
 	conn.sequence += 1
 	return conn.sequence
+}
+
+func (conn *ConnDriver) SetReadDeadline(time time.Time) err {
+	if conn.TimeWheel == nil {
+		return conn.SetReadDeadline(time)
+	}
+	conn.Lock()
+	conn.readTimeoutCh = conn.timer.After(time)
+	conn.Unlock()
 }
 
 func (conn *ConnDriver) ReadRequestHeader(reqHeader *RequestHeader) error {
