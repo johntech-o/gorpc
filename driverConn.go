@@ -18,19 +18,19 @@ func (this *ConnId) Incr() ConnId {
 	return ConnId(atomic.AddUint64((*uint64)(this), 1))
 }
 
+// use by client
 var clientConnId ConnId
+
+// user by server
+var serverConnId ConnId
 
 type Connection struct {
 	*net.TCPConn
-	server         *Server
-	timer          *TimeWheel
-	*sync.RWMutex  // protects following
-	readTimeoutCh  <-chan struct{}
-	writeTimeoutCh <-chan struct{}
+	server *Server
 }
 
 func NewConnection(conn *net.TCPConn, server *Server) *Connection {
-	return &Connection{conn, server, NewTimeWheel(time.Second, 600)}
+	return &Connection{conn, server}
 }
 
 type ConnDriver struct {
@@ -49,6 +49,11 @@ type ConnDriver struct {
 	callCount        int // for priority
 	workingElement   *list.Element
 	idleElement      *list.Element
+
+	timeLock       sync.RWMutex // protects followinng
+	readDeadline   time.Time
+	writeDeadline  time.Time
+	closeByTimerGC bool
 }
 
 // for flow control
@@ -65,15 +70,6 @@ func (conn *Connection) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (conn *Connection) SetWriteDeadline(time time.Time) err {
-	if conn.TimeWheel == nil {
-		conn.SetWriteDeadline(time)
-	}
-	conn.Lock()
-	conn.WriteTimeoutCh = conn.timer.After(time)
-	conn.Unlock()
-}
-
 func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 	var c io.ReadWriter
 	if server != nil {
@@ -84,12 +80,16 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 	buf := bufio.NewWriter(c)
 	return &ConnDriver{
 		TCPConn:          conn,
+		ConnId:           serverConnId.Incr(),
 		writeBuf:         buf,
 		dec:              gob.NewDecoder(c),
 		enc:              gob.NewEncoder(buf),
 		exitWriteNotify:  make(chan bool, 1),
 		pendingResponses: make(map[uint64]*PendingResponse),
 		pendingRequests:  make(chan *Request, MaxPendingRequest),
+		// timer-gc to close timeout socket
+		readDeadline:  time.Now() + DefaultReadTimeout,
+		writeDeadline: time.Now() + DefaultWriteTimeout,
 	}
 }
 
@@ -98,13 +98,42 @@ func (conn *ConnDriver) Sequence() uint64 {
 	return conn.sequence
 }
 
-func (conn *ConnDriver) SetReadDeadline(time time.Time) err {
-	if conn.TimeWheel == nil {
-		return conn.SetReadDeadline(time)
+// timer-gc to close timeout socket
+// deadlock-review conn.timeLock.Lock
+func (conn *ConnDriver) SetReadDeadline(time time.Time) (err error) {
+	conn.timeLock.Lock()
+	if !conn.isCloseByGCTimer {
+		if time > conn.readDeadline {
+			conn.readDeadline = time
+		}
+	} else {
+		err = ErrNetTimerGCArrive
 	}
-	conn.Lock()
-	conn.readTimeoutCh = conn.timer.After(time)
-	conn.Unlock()
+	conn.timeLock.Unlock()
+	return
+}
+
+// timer-gc to close timeout socket
+// deadlock-review conn.timeLock.Lock
+func (conn *ConnDriver) SetWriteDeadline(time time.Time) (err error) {
+	conn.timeLock.Lock()
+	if !conn.isCloseByGCTimer {
+		if time > conn.writeDeadline {
+			conn.writeDeadline = time
+		}
+	} else {
+		err = ErrNetTimerGCArrive
+	}
+	conn.timeLock.Unlock()
+	return
+}
+
+// deadlock-review conn.timeLock.RLock
+func (conn *ConnDriver) isCloseByGCTimer() bool {
+	conn.timeLock.RLock()
+	isLocked := conn.isCloseByGCTimer
+	conn.timeLock.RUnlock()
+	return isLocked
 }
 
 func (conn *ConnDriver) ReadRequestHeader(reqHeader *RequestHeader) error {

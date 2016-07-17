@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	TimeWheelBucketSize = 600
+	TimeWheelInterval   = time.Second
+)
+
 type ConnPool struct {
 	address       string
 	sync.Mutex    // protects following fields
@@ -18,6 +23,7 @@ type ConnPool struct {
 	status        *ClientStatus
 }
 
+// new connection pool and start async-ping goroutine and timer-garbage-collect goroutine
 func NewConnPool(address string, maxOpenConns, maxIdleConns int) *ConnPool {
 	cp := &ConnPool{
 		openConnsPool: NewOpenPool(),
@@ -27,6 +33,7 @@ func NewConnPool(address string, maxOpenConns, maxIdleConns int) *ConnPool {
 		status:        &ClientStatus{},
 	}
 	go cp.ServeIdlePing()
+	go cp.GCTimer()
 	return cp
 }
 
@@ -36,7 +43,12 @@ func (cp *ConnPool) poolStatus() *ClientStatus {
 	idleAmount := cp.openConnsPool.idleList.Len()
 	creatingAmount := cp.creatingConns
 	cp.Unlock()
-	return &ClientStatus{uint64(idleAmount), uint64(workingAmount - idleAmount), uint64(creatingAmount), cp.status.ReadAmount()}
+	return &ClientStatus{
+		uint64(idleAmount),
+		uint64(workingAmount - idleAmount),
+		uint64(creatingAmount),
+		cp.status.ReadAmount(),
+	}
 }
 
 func (cp *ConnPool) connect(address string, connectTimeout time.Duration) (*net.TCPConn, error) {
@@ -140,7 +152,7 @@ func (cp *ConnPool) RemoveConn(conn *ConnDriver) {
 	cp.openConnsPool.RemoveFromList(conn)
 }
 
-// serve read for rpc connection
+// serve read wait response from server
 func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	var err error
 	for {
@@ -152,8 +164,8 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 		}
 		rpcConn.Unlock()
 		respHeader := NewResponseHeader()
-		// @todo 读写超时按照最大的顺延或者给服务端最大值
-		if err = rpcConn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout + time.Second*10)); err != nil {
+		// pipeline so use the const read timeout
+		if err = rpcConn.SetReadDeadline(time.Now().Add(DefaultClientWaitResponseTimeout)); err != nil {
 			break
 		}
 		if err = rpcConn.ReadResponseHeader(respHeader); err != nil {
@@ -193,6 +205,10 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 		cp.Unlock()
 	}
 	rpcConn.exitWriteNotify <- true // forbidden write request to this connection
+
+	if rpcConn.isCloseByGCTimer() {
+		err = ErrNetReadDeadlineArrive
+	}
 	cp.Lock()
 	rpcConn.Lock()
 	rpcConn.netError = err
@@ -200,6 +216,7 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	rpcConn.Unlock()
 	cp.RemoveConn(rpcConn)
 	cp.Unlock()
+	// @todo race condition detect
 	rpcConn.Close()
 	close(rpcConn.pendingRequests)
 	for _, resp := range rmap {
@@ -249,6 +266,10 @@ func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 		}
 	}
 fail:
+	// close by gc overwrite the common net error
+	if rpcConn.isCloseByGCTimer() {
+		err = ErrNetTimerGCArrive
+	}
 	if err == nil {
 		return
 	}
@@ -259,7 +280,36 @@ fail:
 	rpcConn.Unlock()
 }
 
-//
+// GC the timer which is timeout
+// review_deadlock cp.lock() -> conn.timeLock.lock()
+func (cp *ConnPool) GCTimer() {
+	connsTimeout := []*ConnDriver{}
+	for {
+		now := time.Now()
+		cp.Lock()
+		for e := cp.openConnsPool.workingList.Front(); e != nil; e = e.Next() {
+			conn := e.Value.(*ConnDriver)
+			conn.timerLock.RLock()
+			if conn.readDeadline < now || conn.writeDeadline < now {
+				connsTimeout = append(connsTimeout, conn)
+			}
+			conn.timerLock.RUlock()
+		}
+		for _, conn := range connNeedCheck {
+			cp.openConnsPool.RemoveFromList(conn)
+		}
+		cp.Unlock()
+		for _, conn := range connsTimeout {
+			conn.timeLock.Lock()
+			conn.closeByTimerGC = true
+			conn.timeLock.Unlock()
+			conn.Close()
+		}
+		connsTimeout = connsTimeout[0:0]
+		time.Sleep(DefaultTimerGCInterval)
+	}
+}
+
 func (cp *ConnPool) ServeIdlePing() {
 	for {
 		connPingSlice := []*ConnDriver{}
@@ -353,6 +403,7 @@ func (op *OpensPool) IdlePushBack(conn *ConnDriver) {
 
 }
 
+// remove the conn from working list and idle list
 func (op *OpensPool) RemoveFromList(conn *ConnDriver) {
 	if conn.workingElement != nil {
 		op.workingList.Remove(conn.workingElement)
