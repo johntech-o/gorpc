@@ -175,8 +175,7 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	presp = NewPendingResponse()
 	presp.reply = reply
 	retryTimes := 0
-	timer := time.NewTimer(readTimeout + writeTimeout)
-	defer timer.Stop()
+	timer := client.NewTimer(readTimeout + writeTimeout)
 Retry:
 	if err = this.transfer(rpcConn, request, presp); err != nil {
 		goto final
