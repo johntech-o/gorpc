@@ -27,31 +27,31 @@ const (
 
 type connsMap struct {
 	conns map[ConnId]*ConnDriver
-	*sync.RWMutex
+	sync.RWMutex
 }
 
 type TimerPool [TimerPoolSize]*connsMap
 
 func NewTimerPool() *TimerPool {
 	tp := &TimerPool{}
-	for i, p := range tp {
-		p.conns = make(map[ConnId]*ConnDriver)
+	for index, _ := range tp {
+		tp[index] = &connsMap{conns: make(map[ConnId]*ConnDriver)}
 	}
 	return tp
 }
 
 func (tp *TimerPool) AddConn(conn *ConnDriver) {
-	index = conn.ConnId % TimerPoolSiz
+	index := conn.connId % TimerPoolSize
 	tp[index].Lock()
-	tp[index].conns[conn.ConnId] = conn
+	tp[index].conns[conn.connId] = conn
 	tp[index].Unlock()
 
 }
 
 func (tp *TimerPool) RemoveConn(conn *ConnDriver) {
-	index = conn.ConnId % TimerPoolSiz
+	index := conn.connId % TimerPoolSize
 	tp[index].Lock()
-	delete(tp[index].conns[conn.ConnId], conn.ConnId)
+	delete(tp[index].conns, conn.connId)
 	tp[index].Unlock()
 
 }
@@ -81,7 +81,7 @@ func NewServer(Address string) *Server {
 		timerPool:  NewTimerPool(),
 	}
 	s.Register(&RpcStatus{s})
-	go serveTimerManage()
+	go s.serveTimerManage()
 	return s
 }
 
@@ -100,23 +100,22 @@ func (server *Server) Serve() {
 // serve  read write deadline-timer of conn
 func (server *Server) serveConn(conn *net.TCPConn) {
 	rpcConn := NewConnDriver(conn, server)
-	server.timerPool.AddConn(conn)
+	server.timerPool.AddConn(rpcConn)
 	server.ServeLoop(rpcConn)
-	server.timerPool.RemoveConn(conn)
+	server.timerPool.RemoveConn(rpcConn)
 }
 
 // dead-lock review timerPool.lock -> conn.timeLock
 func (server *Server) serveTimerManage() {
 	for i := 0; i < TimerPoolSize; i++ {
 		go func(pool *connsMap) {
-			connsTimeout = make([]*ConnDriver, 100)
-			connsTimeout = connsTimeout[0:0]
+			connsTimeout := make([]*ConnDriver, 100)[0:0]
 			for {
 				now := time.Now()
 				pool.Lock()
-				for id, conn := range pool {
+				for _, conn := range pool.conns {
 					conn.timeLock.RLock()
-					if conn.readDeadline < now || conn.writeDeadline < now {
+					if conn.readDeadline.Before(now) || conn.writeDeadline.Before(now) {
 						connsTimeout = append(connsTimeout, conn)
 					}
 					conn.timeLock.RUnlock()

@@ -289,13 +289,13 @@ func (cp *ConnPool) GCTimer() {
 		cp.Lock()
 		for e := cp.openConnsPool.workingList.Front(); e != nil; e = e.Next() {
 			conn := e.Value.(*ConnDriver)
-			conn.timerLock.RLock()
-			if conn.readDeadline < now || conn.writeDeadline < now {
+			conn.timeLock.RLock()
+			if conn.readDeadline.Before(now) || conn.writeDeadline.Before(now) {
 				connsTimeout = append(connsTimeout, conn)
 			}
-			conn.timerLock.RUlock()
+			conn.timeLock.RUnlock()
 		}
-		for _, conn := range connNeedCheck {
+		for _, conn := range connsTimeout {
 			cp.openConnsPool.RemoveFromList(conn)
 		}
 		cp.Unlock()

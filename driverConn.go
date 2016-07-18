@@ -80,7 +80,7 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 	buf := bufio.NewWriter(c)
 	return &ConnDriver{
 		TCPConn:          conn,
-		ConnId:           serverConnId.Incr(),
+		connId:           serverConnId.Incr(),
 		writeBuf:         buf,
 		dec:              gob.NewDecoder(c),
 		enc:              gob.NewEncoder(buf),
@@ -88,8 +88,8 @@ func NewConnDriver(conn *net.TCPConn, server *Server) *ConnDriver {
 		pendingResponses: make(map[uint64]*PendingResponse),
 		pendingRequests:  make(chan *Request, MaxPendingRequest),
 		// timer-gc to close timeout socket
-		readDeadline:  time.Now() + DefaultReadTimeout,
-		writeDeadline: time.Now() + DefaultWriteTimeout,
+		readDeadline:  time.Now().Add(DefaultReadTimeout),
+		writeDeadline: time.Now().Add(DefaultWriteTimeout),
 	}
 }
 
@@ -102,8 +102,8 @@ func (conn *ConnDriver) Sequence() uint64 {
 // deadlock-review conn.timeLock.Lock
 func (conn *ConnDriver) SetReadDeadline(time time.Time) (err error) {
 	conn.timeLock.Lock()
-	if !conn.isCloseByGCTimer {
-		if time > conn.readDeadline {
+	if conn.closeByTimerGC == false {
+		if time.After(conn.readDeadline) {
 			conn.readDeadline = time
 		}
 	} else {
@@ -117,8 +117,8 @@ func (conn *ConnDriver) SetReadDeadline(time time.Time) (err error) {
 // deadlock-review conn.timeLock.Lock
 func (conn *ConnDriver) SetWriteDeadline(time time.Time) (err error) {
 	conn.timeLock.Lock()
-	if !conn.isCloseByGCTimer {
-		if time > conn.writeDeadline {
+	if !conn.closeByTimerGC {
+		if time.After(conn.writeDeadline) {
 			conn.writeDeadline = time
 		}
 	} else {
@@ -131,7 +131,7 @@ func (conn *ConnDriver) SetWriteDeadline(time time.Time) (err error) {
 // deadlock-review conn.timeLock.RLock
 func (conn *ConnDriver) isCloseByGCTimer() bool {
 	conn.timeLock.RLock()
-	isLocked := conn.isCloseByGCTimer
+	isLocked := conn.closeByTimerGC
 	conn.timeLock.RUnlock()
 	return isLocked
 }

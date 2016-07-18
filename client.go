@@ -15,6 +15,9 @@ import (
 
 const (
 	CALL_RETRY_TIMES = 1
+
+	TIME_WHEEL_BUCKET   = 600
+	TIME_WHEEL_INTERVAL = time.Second
 )
 
 type NetOptions struct {
@@ -52,10 +55,7 @@ type Timer struct {
 
 func (t *Timer) stop() {}
 
-func (this *Client) NewTimer(timeout time.Duration) <-chan struct{} {
-	if this.timer != nil {
-		return time.NewTimer(timout)
-	}
+func (this *Client) NewTimer(timeout time.Duration) *Timer {
 	return &Timer{C: this.timer.After(timeout)}
 }
 
@@ -65,7 +65,7 @@ func NewClient(netOptions *NetOptions) *Client {
 		serverOptions:  netOptions,
 		serviceOptions: make(map[string]*NetOptions),
 		methodOptions:  make(map[string]map[string]*NetOptions),
-		timer:          NewTimeWheel(time.Second, 600),
+		timer:          NewTimeWheel(TIME_WHEEL_INTERVAL, TIME_WHEEL_BUCKET),
 	}
 	return &c
 }

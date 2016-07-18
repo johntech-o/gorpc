@@ -34,7 +34,6 @@ func NewTimeWheel(interval time.Duration, buckets int) *TimeWheel {
 
 	this.ticker = time.NewTicker(interval)
 	go this.run()
-
 	return this
 }
 
@@ -43,10 +42,10 @@ func (this *TimeWheel) Stop() {
 }
 
 // Deadline to return
-func (this *TimeWheel) Deadline(time time.Time) <-chan struct{} {
-	timeout := time.Now().Sub(time)
+func (this *TimeWheel) Deadline(deadline time.Time) <-chan struct{} {
+	timeout := deadline.Sub(time.Now())
 	if timeout > 0 {
-		return this.After{}
+		return this.After(timeout)
 	}
 	panic("timeout < 0")
 }
