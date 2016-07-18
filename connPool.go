@@ -153,9 +153,9 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 		rpcConn.Unlock()
 		respHeader := NewResponseHeader()
 		// @todo 读写超时按照最大的顺延或者给服务端最大值
-		if err = rpcConn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout + time.Second*10)); err != nil {
-			break
-		}
+		// if err = rpcConn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout + time.Second*10)); err != nil {
+		//	break
+		//	}
 		if err = rpcConn.ReadResponseHeader(respHeader); err != nil {
 			// println("read response header error: ", err.Error())
 			break
@@ -225,9 +225,9 @@ func (cp *ConnPool) serveWrite(rpcConn *ConnDriver) {
 				continue
 			}
 			// write request
-			if err = rpcConn.SetWriteDeadline(time.Now().Add(request.writeTimeout)); err != nil {
-				goto fail
-			}
+			// if err = rpcConn.SetWriteDeadline(time.Now().Add(request.writeTimeout)); err != nil {
+			//	goto fail
+			// }
 			if err = rpcConn.WriteRequestHeader(request.header); err != nil {
 				// println("write request: ", err.Error())
 				goto fail

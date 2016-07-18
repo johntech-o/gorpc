@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"reflect"
-	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -70,9 +69,9 @@ func (server *Server) ServeLoop(conn *ConnDriver) {
 	var service *service
 	for {
 		reqHeader := NewRequestHeader()
-		if err = conn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout)); err != nil {
-			goto fail
-		}
+		//	if err = conn.SetReadDeadline(time.Now().Add(DefaultServerIdleTimeout)); err != nil {
+		//		goto fail
+		//	}
 		err = conn.ReadRequestHeader(reqHeader)
 		if err != nil {
 			goto fail
@@ -200,10 +199,10 @@ func (server *Server) SendFrame(conn *ConnDriver, respHeader *ResponseHeader, re
 	if conn.netError != nil {
 		return conn.netError
 	}
-	err = conn.SetWriteDeadline(time.Now().Add(DefaultServerIdleTimeout))
-	if err != nil {
-		goto final
-	}
+	// err = conn.SetWriteDeadline(time.Now().Add(DefaultServerIdleTimeout))
+	// if err != nil {
+	//	goto final
+	//}
 	err = conn.WriteResponseHeader(respHeader)
 	if err != nil {
 		goto final

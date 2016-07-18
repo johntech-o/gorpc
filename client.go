@@ -137,7 +137,7 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 		presp   *PendingResponse
 		request *Request
 	)
-	connectTimeout, readTimeout, writeTimeout := this.getTimeout(service, method)
+	connectTimeout, _, writeTimeout := this.getTimeout(service, method)
 	this.RLock()
 	cp, ok := this.cpMap[serverAddress]
 	this.RUnlock()
@@ -161,18 +161,18 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	presp = NewPendingResponse()
 	presp.reply = reply
 	retryTimes := 0
-	timer := time.NewTimer(readTimeout + writeTimeout)
-	defer timer.Stop()
+	//	timer := time.NewTimer(readTimeout + writeTimeout)
+	//	defer timer.Stop()
 Retry:
 	if err = this.transfer(rpcConn, request, presp); err != nil {
 		goto final
 	}
 
 	select {
-	case <-timer.C:
-		request.freePending()
-		err = ErrRequestTimeout
-		goto final
+	//	case <-timer.C:
+	//		request.freePending()
+	//		err = ErrRequestTimeout
+	//		goto final
 	case <-presp.done:
 		if presp.err == nil {
 			goto final
