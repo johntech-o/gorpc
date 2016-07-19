@@ -3,12 +3,14 @@
 package gorpc
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +21,8 @@ import (
 var client *Client
 
 const (
-	ExecAmount = 1000000
+	ExecGoroutines    = 10000
+	ExecPerGoroutines = 100
 )
 
 func init() {
@@ -27,7 +30,7 @@ func init() {
 	go func() {
 		log.Println(http.ListenAndServe(":6789", nil))
 	}()
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Microsecond * 2)
 }
 
 type TestABC struct {
@@ -67,6 +70,9 @@ func (r *TestRpcInt) EchoStruct(arg TestABC, res *string) error {
 	return nil
 }
 
+var StopClient2 = make(chan struct{})
+var MaxQps uint64
+
 func TestStartServerClient(t *testing.T) {
 	go func() {
 		s := NewServer("127.0.0.1:6668")
@@ -74,39 +80,51 @@ func TestStartServerClient(t *testing.T) {
 		s.Serve()
 		panic("server fail")
 	}()
-	go func() {
-		s := NewServer("127.0.0.1:6669")
-		s.Register(new(TestRpcInt))
-		s.Serve()
-		panic("server fail")
-	}()
-	// client3 := NewClient(NewNetOptions(time.Second*10, time.Second*20, time.Second*20))
-	// var res string
-	// err := client3.CallWithAddress("127.0.0.1:6669", "TestRpcInt", "EchoStruct", TestABC{"aaa", "bbb", "ccc"}, &res)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-	// time.Sleep(1000e9)
-	time.Sleep(2e8)
+	time.Sleep(time.Millisecond * 2)
 	netOptions := NewNetOptions(time.Second*10, time.Second*20, time.Second*20)
+	// client to ben test server
 	client = NewClient(netOptions)
+
+	// client2 to get go gorpc status
 	client2 := NewClient(netOptions)
 	go func() {
+		timer := time.NewTicker(time.Second)
+		defer timer.Stop()
 		for {
-			var reply string
-			if err := client2.CallWithAddress("127.0.0.1:6668", "RpcStatus", "CallStatus", false, &reply); err == nil {
+			select {
+			case <-StopClient2:
+				return
+			case <-timer.C:
+				var reply string
+				var err *Error
+
+				err = client2.CallWithAddress("127.0.0.1:6668", "RpcStatus", "CallStatus", false, &reply)
+				if err != nil {
+					fmt.Println("server call amount error: ", err.Error())
+					continue
+				}
+				var qps = struct {
+					Result uint64
+					Errno  int
+				}{}
+				qpsStr := client.Qps()
+				if err := json.Unmarshal([]byte(qpsStr), &qps); err != nil {
+					fmt.Println(err)
+				}
+				if qps.Result > MaxQps {
+					MaxQps = qps.Result
+				}
 				fmt.Println("server call status: ", reply)
-			} else {
-				fmt.Println("server call amount error: ", err)
+				fmt.Println("client conn status: ", client.ConnsStatus())
+				fmt.Println("client conn Qps   : ", qpsStr)
+
+			default:
 			}
-			time.Sleep(time.Second * 5)
-			fmt.Println("client conn status: ", client.ConnsStatus())
-			fmt.Println("client conn Qps: ", client.Qps())
 		}
 	}()
 }
 
-// 加密之后马上解密
+// common case test fault-tolerant
 func TestInvalidParams(t *testing.T) {
 	var up int
 	t.Log("test invalid service")
@@ -170,96 +188,160 @@ func TestInvalidParams(t *testing.T) {
 }
 
 func TestEchoStruct(t *testing.T) {
-	pprof.MemStats()
-	EchoStruct(t, ExecAmount)
-	pprof.MemStats()
-	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs)
-}
 
-func EchoStruct(t *testing.T, testCount int) {
-	execTimes := testCount
 	var results = struct {
 		content map[string]int
 		sync.Mutex
-	}{content: make(map[string]int)}
+	}{content: make(map[string]int, 1000)}
 
-	var counter = CallCalculator{
-		fields: make(map[int]*CallTimer),
-	}
-
-	var wg sync.WaitGroup
-	for i := 0; i < execTimes; i++ {
-		if i > 0 && i%1000000 == 0 {
-			time.Sleep(time.Second * 1)
-			fmt.Println("___________________________________ current:", i, "amount:", execTimes)
-		}
-		wg.Add(1)
-		// time.Sleep(1e5)
-		go func(count int) {
-			defer wg.Done()
-			var res string
-			counter.Start(count)
-			err := client.CallWithAddress("127.0.0.1:6668", "TestRpcInt", "EchoStruct", TestABC{"aaa", "bbb", "ccc"}, &res)
-			counter.End(count)
-			if err != nil {
+	var counter = NewCallCalculator()
+	var wgCreate sync.WaitGroup
+	var wgFinish sync.WaitGroup
+	var startRequestCh = make(chan struct{})
+	for i := 0; i < ExecGoroutines; i++ {
+		wgCreate.Add(1)
+		go func() {
+			wgCreate.Done()
+			wgFinish.Add(1)
+			defer wgFinish.Done()
+			<-startRequestCh
+			for i := 0; i < ExecPerGoroutines; i++ {
+				var res string
+				id := counter.Start()
+				err := client.CallWithAddress("127.0.0.1:6668", "TestRpcInt", "EchoStruct", TestABC{"aaa", "bbb", "ccc"}, &res)
+				counter.End(id)
+				if err != nil {
+					results.Lock()
+					results.content[err.Error()] += 1
+					results.Unlock()
+					continue
+				}
 				results.Lock()
-				results.content[err.Error()] += 1
+				results.content[res] += 1
 				results.Unlock()
-				return
 			}
-			results.Lock()
-			results.content[res] += 1
-			results.Unlock()
-		}(i)
+
+		}()
 	}
-	wg.Wait()
+	wgCreate.Wait()
+	// pprof result
+	pprof.MemStats()
+	// start to send request
+	close(startRequestCh)
+	wgFinish.Wait()
+	close(StopClient2)
+	pprof.MemStats()
+	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs, pprof.NumGC)
+
+	// output rpc result
+	if len(results.content) > 1 {
+		t.Error("have failed call")
+	}
 	for result, count := range results.content {
-		fmt.Println("TestEchoStruct result and count ", result, count)
-		if count < execTimes {
-			t.Error("have fail call")
-		}
+		t.Logf("TestEchoStruct result: %s ,count: %d \n", result, count)
 	}
-	fmt.Println("time cost: ", counter.timeCost(), "QPS is", counter.QPS())
-	time.Sleep(time.Second * 5)
+	// client request result
+	counter.Summary()
+	fmt.Printf("Max Client Qps: %d \n", MaxQps)
+	time.Sleep(time.Microsecond)
 }
 
 type CallTimer struct {
+	id        uint64
 	startTime time.Time
 	endTime   time.Time
 }
 
 type CallCalculator struct {
 	sync.Mutex
-	fields map[int]*CallTimer
+	id           int
+	fields       map[int]*CallTimer
+	fieldsSorted []*CallTimer
+	rangeResult  map[float64]time.Duration // ratio:qps
 }
 
-func (c *CallCalculator) Start(key int) {
+var SummaryRatio = []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
+
+func NewCallCalculator() *CallCalculator {
+	c := &CallCalculator{
+		fields:       make(map[int]*CallTimer, 1000000),
+		fieldsSorted: make([]*CallTimer, 0, 1000000),
+		rangeResult:  map[float64]time.Duration{},
+	}
+	for _, ratio := range SummaryRatio {
+		c.rangeResult[ratio] = 0
+	}
+	return c
+}
+
+func (c CallCalculator) Len() int { return len(c.fieldsSorted) }
+
+func (c CallCalculator) Swap(i, j int) {
+	c.fieldsSorted[i], c.fieldsSorted[j] = c.fieldsSorted[j], c.fieldsSorted[i]
+}
+func (c CallCalculator) Less(i, j int) bool {
+	return c.fieldsSorted[i].endTime.Sub(c.fieldsSorted[i].startTime) < c.fieldsSorted[j].endTime.Sub(c.fieldsSorted[j].startTime)
+}
+
+func (c *CallCalculator) Start() (index int) {
 	c.Lock()
-	c.fields[key] = &CallTimer{startTime: time.Now()}
+	index = c.id
+	c.fields[c.id] = &CallTimer{startTime: time.Now()}
+	c.id++
+	c.Unlock()
+	return
+}
+
+func (c *CallCalculator) End(index int) {
+	c.Lock()
+	c.fields[index].endTime = time.Now()
 	c.Unlock()
 }
 
-func (c *CallCalculator) End(key int) {
-	c.Lock()
-	c.fields[key].endTime = time.Now()
-	c.Unlock()
+func (c *CallCalculator) sort() {
+	if len(c.fieldsSorted) == 0 {
+		for _, v := range c.fields {
+			c.fieldsSorted = append(c.fieldsSorted, v)
+		}
+		sort.Sort(c)
+	}
 }
 
-func (c *CallCalculator) timeCost() time.Duration {
+func (c *CallCalculator) Summary() {
+	c.sort()
+
 	var timeCost time.Duration
-	c.Lock()
-	defer c.Unlock()
-	for _, v := range c.fields {
+	indexToCal := make(map[int]float64)
+	for ratio, _ := range c.rangeResult {
+		index := int(float64(len(c.fieldsSorted)) * ratio)
+		indexToCal[index-1] = ratio
+	}
+
+	minStartTime, maxEndTime := time.Now(), time.Time{}
+
+	for index, v := range c.fieldsSorted {
+		if v.startTime.Before(minStartTime) {
+			minStartTime = v.startTime
+		}
+		if v.endTime.After(maxEndTime) {
+			maxEndTime = v.endTime
+		}
 		if v.endTime.Sub(v.startTime) > timeCost {
 			timeCost = v.endTime.Sub(v.startTime)
 		}
+		if ratio, ok := indexToCal[index]; ok {
+			c.rangeResult[ratio] = timeCost
+		}
 	}
-	return timeCost
-}
 
-func (c *CallCalculator) QPS() int {
-	timeCost := c.timeCost()
-	c.Lock()
-	defer c.Unlock()
-	return int(float64(len(c.fields)) * float64(time.Second) / float64(timeCost))
+	for _, ratio := range SummaryRatio {
+		timeCost = c.rangeResult[ratio]
+		callsRatio := int(100 * ratio)
+		maxTimeCost := int(timeCost / time.Millisecond)
+
+		fmt.Printf("%3d%% calls consume less than %d ms \n", callsRatio, maxTimeCost)
+	}
+	costSeconds := int64(maxEndTime.Sub(minStartTime)) / int64(time.Second)
+	qps := int64(len(c.fieldsSorted)) * int64(time.Second) / int64(maxEndTime.Sub(minStartTime))
+	fmt.Printf("request amount: %d, cost times : %d second, average Qps: %d \n", len(c.fieldsSorted), costSeconds, qps)
 }
