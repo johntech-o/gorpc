@@ -22,7 +22,7 @@ var client *Client
 
 const (
 	ExecGoroutines    = 10000
-	ExecPerGoroutines = 100
+	ExecPerGoroutines = 1000
 )
 
 func init() {
