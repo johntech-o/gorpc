@@ -109,9 +109,7 @@ func TestStartServerClient(t *testing.T) {
 					Errno  int
 				}{}
 				qpsStr := client.Qps()
-				if err := json.Unmarshal([]byte(qpsStr), &qps); err != nil {
-					fmt.Println(err)
-				}
+				json.Unmarshal([]byte(qpsStr), &qps)
 				if qps.Result > MaxQps {
 					MaxQps = qps.Result
 				}
@@ -231,7 +229,7 @@ func TestEchoStruct(t *testing.T) {
 	close(startRequestCh)
 	wgFinish.Wait()
 	close(StopClient2)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs, pprof.NumGC)
 
