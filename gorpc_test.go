@@ -22,7 +22,7 @@ var client *Client
 
 const (
 	ExecGoroutines    = 10000
-	ExecPerGoroutines = 1000
+	ExecPerGoroutines = 100
 )
 
 func init() {
@@ -113,9 +113,11 @@ func TestStartServerClient(t *testing.T) {
 				if qps.Result > MaxQps {
 					MaxQps = qps.Result
 				}
-				fmt.Println("server call status: ", reply)
-				fmt.Println("client conn status: ", client.ConnsStatus())
-				fmt.Println("client conn Qps   : ", qpsStr)
+				if qps.Result != 0 {
+					fmt.Println("server call status: ", reply)
+					fmt.Println("client conn status: ", client.ConnsStatus())
+					fmt.Println("client conn Qps   : ", qpsStr)
+				}
 
 			default:
 			}
@@ -229,7 +231,7 @@ func TestEchoStruct(t *testing.T) {
 	close(startRequestCh)
 	wgFinish.Wait()
 	close(StopClient2)
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 5)
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs, pprof.NumGC)
 
