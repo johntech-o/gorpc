@@ -80,6 +80,7 @@ func TestStartServerClient(t *testing.T) {
 		s.Serve()
 		panic("server fail")
 	}()
+
 	time.Sleep(time.Millisecond * 2)
 	netOptions := NewNetOptions(time.Second*10, time.Second*20, time.Second*20)
 	// client to ben test server
@@ -230,6 +231,7 @@ func TestEchoStruct(t *testing.T) {
 	close(startRequestCh)
 	wgFinish.Wait()
 	close(StopClient2)
+	time.Sleep(time.Second)
 	pprof.MemStats()
 	pprof.StatIncrement(pprof.HeapObjects, pprof.TotalAlloc, pprof.PauseTotalMs, pprof.NumGC)
 
