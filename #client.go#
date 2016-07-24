@@ -15,6 +15,9 @@ import (
 
 const (
 	CALL_RETRY_TIMES = 1
+
+	TIME_WHEEL_BUCKET   = 600
+	TIME_WHEEL_INTERVAL = time.Second
 )
 
 type NetOptions struct {
@@ -46,18 +49,7 @@ type Client struct {
 	serverOptions  *NetOptions
 	timer          *TimeWheel
 }
-type Timer struct {
-	C <-chan struct{}
-}
 
-func (t *Timer) stop() {}
-
-func (this *Client) NewTimer(timeout time.Duration) <-chan struct{} {
-	if this.timer != nil {
-		return time.NewTimer(timout)
-	}
-	return &Timer{C: this.timer.After(timeout)}
-}
 
 func NewClient(netOptions *NetOptions) *Client {
 	c := Client{
@@ -65,7 +57,7 @@ func NewClient(netOptions *NetOptions) *Client {
 		serverOptions:  netOptions,
 		serviceOptions: make(map[string]*NetOptions),
 		methodOptions:  make(map[string]map[string]*NetOptions),
-		timer:          NewTimeWheel(time.Second, 600),
+		timer:          NewTimeWheel(TIME_WHEEL_INTERVAL, TIME_WHEEL_BUCKET),
 	}
 	return &c
 }
@@ -175,8 +167,7 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	presp = NewPendingResponse()
 	presp.reply = reply
 	retryTimes := 0
-	timer := time.NewTimer(readTimeout + writeTimeout)
-	defer timer.Stop()
+	timer := client.NewTimer(readTimeout + writeTimeout)
 Retry:
 	if err = this.transfer(rpcConn, request, presp); err != nil {
 		goto final

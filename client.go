@@ -49,6 +49,7 @@ type Client struct {
 	serverOptions  *NetOptions
 	timer          *TimeWheel
 }
+
 type Timer struct {
 	C <-chan struct{}
 }
