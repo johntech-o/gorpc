@@ -1,104 +1,126 @@
-package timeWheel
+package timeheel
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 )
 
-type wheel struct {
-	mu         sync.Mutex // protect following
-	interval   time.Duration
-	maxTimeout time.Duration
+const (
+	DefaultInterval      = time.Second
+	DefaultBucketSize    = 600
+	DefaultWheelPoolSize = 5
+)
 
-	ticker *time.Ticker
-	quit   chan struct{}
-
-	cs []chan struct{}
-
-	pos int // current time tick pointer
-
-}
-
-var TimerWheel = &wheel{}
-
+// C is receive only chan
 type Timer struct {
-	C <-chan struct{}
+	C chan struct{}
 }
-
-func (t *Timer) stop() {}
 
 func NewTimer(timeout time.Duration) *Timer {
-	return &Timer{C: this.timer.After(timeout)}
+	return DefaultTimerWheel.AddTimer(timeout)
 }
 
-func NewTimeWheel(interval time.Duration, buckets int) *TimeWheel {
-	this := new(TimeWheel)
+// unreference the timer do nothing
+func (t *Timer) Stop() {}
 
-	this.interval = interval
-	this.maxTimeout = time.Duration(interval * (time.Duration(buckets)))
+// default wheel support max timeout 10min
+var DefaultTimerWheel = func() *wheelPool {
+	return NewWheelPool(DefaultWheelPoolSize, DefaultInterval, DefaultBucketSize)
+}()
 
-	this.quit = make(chan struct{})
-	this.pos = 0
-	this.cs = make([]chan struct{}, buckets)
-	for i := range this.cs {
-		this.cs[i] = make(chan struct{})
+type wheelPool struct {
+	size   int
+	wheels []*wheel
+}
+
+func NewWheelPool(poolSize int, interval time.Duration, bucketSize int) *wheelPool {
+	wp := &wheelPool{
+		size: poolSize,
 	}
-
-	this.ticker = time.NewTicker(interval)
-	go this.run()
-	return this
-}
-
-func (this *TimeWheel) Stop() {
-	close(this.quit)
-}
-
-// Deadline to return
-func (this *TimeWheel) Deadline(deadline time.Time) <-chan struct{} {
-	timeout := deadline.Sub(time.Now())
-	if timeout > 0 {
-		return this.After(timeout)
+	for i := 0; i < poolSize; i++ {
+		wp.wheels = append(wp.wheels, NewWheel(interval, bucketSize))
 	}
-	panic("timeout < 0")
+	return wp
 }
 
-func (this *TimeWheel) After(timeout time.Duration) <-chan struct{} {
-	if timeout >= this.maxTimeout {
-		panic("timeout too much, over maxtimeout")
+// sharding the add lock
+func (wp *wheelPool) AddTimer(timeout time.Duration) *Timer {
+	index = rand.Intn(wp.size)
+	return wp.wheels[index].AddTimer(timeout)
+}
+
+// close all the wheels
+func (wp *wheelPool) Close() {
+	for _, w := range wp.wheels {
+		w.Close()
 	}
-
-	this.mu.Lock()
-
-	index := (this.pos + int(timeout/this.interval)) % len(this.cs)
-	broadcastCh := this.cs[index]
-
-	this.mu.Unlock()
-
-	return broadcastCh
+	return
 }
 
-func (this *TimeWheel) run() {
+type wheel struct {
+	interval   time.Duration
+	maxTimeout time.Duration
+	ticker     *time.Ticker
+	closeCh    chan struct{}
+
+	sync.Mutex // protect following
+	buckets    []*Timer
+	tail       int // current wheel tail index
+
+}
+
+func NewWheel(interval time.Duration, bucketsSize int) *wheel {
+	w := &wheel{
+		interval:   interval,
+		maxTimeout: interval * time.Duration(bucketsSize),
+		buckets:    make([]*Timer, buckets),
+		tail:       0,
+		ticker:     time.NewTicker(interval),
+		closeCh:    make(chan struct{}, 1),
+	}
+	for i := range w.buckets {
+		w.buckets[i] = &Timer{w: &w, C: make(chan struct{}, 1)}
+	}
+	go w.scan()
+	return w
+}
+
+// add timer to the bucket
+func (w *wheel) AddTimer(timeout time.Duration) *Timer {
+	if timeout >= tw.maxTimeout {
+		panic("timeout exceed maxTimeout")
+	}
+	w.Lock()
+	index := (w.tail + int(timeout/w.interval)) % len(w.buckets)
+	timer := tw.buckets[index]
+	w.Unlock()
+	return timer
+}
+
+func (w *wheel) Close() {
+	close(w.closeCh)
+}
+
+// scan the wheel every ticket duration
+// close tail timer then notify  which refer to tail timer
+func (w *wheel) scan() {
 	for {
 		select {
-		case <-this.ticker.C:
-			this.onTicker()
+		case <-w.ticker.C:
+			w.Lock()
+			w.tail = (this.tail + 1) % len(tw.buckets) // move the time pointer ahead
+			timer := w.buckets[this.tail]
+			w.buckets[tw.tail] = &Timer{}
+			w.Unlock()
+			close(timer.C)
 
-		case <-this.quit:
-			this.ticker.Stop()
+		case <-w.closeCh:
+			for _, timer := range w.buckets {
+				close(timer.C)
+			}
+			w.ticker.Stop()
 			return
 		}
 	}
-}
-
-func (this *TimeWheel) onTicker() {
-	this.mu.Lock()
-
-	this.pos = (this.pos + 1) % len(this.cs) // move the time pointer ahead
-	broadcastCh := this.cs[this.pos]
-	this.cs[this.pos] = make(chan struct{})
-
-	this.mu.Unlock()
-
-	// broadcast the timers: time is up!
-	close(broadcastCh)
 }

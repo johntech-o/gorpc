@@ -1,6 +1,7 @@
-package timeheel
+package timewheel
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -8,20 +9,22 @@ import (
 
 const (
 	DefaultInterval      = time.Second
-	DefaultBucketSize    = 600
+	DefaultBucketSize    = 600 // ten min
 	DefaultWheelPoolSize = 5
 )
 
+// C is receive only chan
 type Timer struct {
-	C <-chan struct{}
+	C chan struct{}
 }
 
+// use default timer wheel init with the default params
 func NewTimer(timeout time.Duration) *Timer {
 	return DefaultTimerWheel.AddTimer(timeout)
 }
 
 // unreference the timer do nothing
-func (t *Timer) stop() {}
+func (t *Timer) Stop() {}
 
 // default wheel support max timeout 10min
 var DefaultTimerWheel = func() *wheelPool {
@@ -33,32 +36,38 @@ type wheelPool struct {
 	wheels []*wheel
 }
 
+// user can New their own Wheel Pool
 func NewWheelPool(poolSize int, interval time.Duration, bucketSize int) *wheelPool {
 	wp := &wheelPool{
-		size:   poolSize,
-		wheels: []wheel{},
+		size: poolSize,
 	}
 	for i := 0; i < poolSize; i++ {
-		wp[i].wheels = NewWheel(interval, bucketSize)
+		wp.wheels = append(wp.wheels, newWheel(i, interval, bucketSize))
 	}
 	return wp
 }
 
+// newTimer to the user
+func (wp *wheelPool) NewTimer(timeout time.Duration) *Timer {
+	return wp.AddTimer(timeout)
+}
+
 // sharding the add lock
 func (wp *wheelPool) AddTimer(timeout time.Duration) *Timer {
-	index = rand.Intn(wp.size)
-	return wp.wheels[index].AddTimer()
+	index := rand.Intn(wp.size)
+	return wp.wheels[index].addTimer(timeout)
 }
 
 // close all the wheels
 func (wp *wheelPool) Close() {
 	for _, w := range wp.wheels {
-		w.Close()
+		w.close()
 	}
 	return
 }
 
 type wheel struct {
+	index      int // index in the wheelPool
 	interval   time.Duration
 	maxTimeout time.Duration
 	ticker     *time.Ticker
@@ -70,48 +79,58 @@ type wheel struct {
 
 }
 
-func NewWheel(interval time.Duration, bucketsSize int) *wheel {
+// user define own wheel set the index to zero
+func newWheel(index int, interval time.Duration, bucketsSize int) *wheel {
 	w := &wheel{
+		index:      index,
 		interval:   interval,
 		maxTimeout: interval * time.Duration(bucketsSize),
-		buckets:    make([]*Timer, buckets),
+		buckets:    make([]*Timer, bucketsSize),
 		tail:       0,
 		ticker:     time.NewTicker(interval),
 		closeCh:    make(chan struct{}, 1),
 	}
 	for i := range w.buckets {
-		w.buckets[i] = &Timer{w: &w, C: make(chan struct{}, 1)}
+		w.buckets[i] = &Timer{C: make(chan struct{}, 1)}
 	}
 	go w.scan()
 	return w
 }
 
 // add timer to the bucket
-func (w *wheel) AddTimer(timeout time.Duration) *Timer {
-	if timeout >= tw.maxTimeout {
-		panic("timeout exceed maxTimeout")
+func (w *wheel) addTimer(timeout time.Duration) *Timer {
+	if timeout <= 0 {
+		t := &Timer{C: make(chan struct{}, 1)}
+		close(t.C)
+		return t
 	}
+	if timeout >= w.maxTimeout {
+		println("exceed maxTimeout set the timeout to MaxTimeout")
+		timeout = w.maxTimeout
+	}
+	fmt.Println(w.index)
 	w.Lock()
 	index := (w.tail + int(timeout/w.interval)) % len(w.buckets)
-	timer := tw.buckets[index]
+	timer := w.buckets[index]
 	w.Unlock()
 	return timer
 }
 
-func (w *wheel) Close() {
+func (w *wheel) close() {
 	close(w.closeCh)
 }
 
 // scan the wheel every ticket duration
 // close tail timer then notify  which refer to tail timer
+// start from the index 1
 func (w *wheel) scan() {
 	for {
 		select {
 		case <-w.ticker.C:
 			w.Lock()
-			w.tail = (this.tail + 1) % len(tw.buckets) // move the time pointer ahead
-			timer := w.buckets[this.tail]
-			w.buckets[tw.tail] = &Timer{}
+			w.tail = (w.tail + 1) % len(w.buckets) // move the time pointer ahead
+			timer := w.buckets[w.tail]
+			w.buckets[w.tail] = &Timer{C: make(chan struct{}, 1)}
 			w.Unlock()
 			close(timer.C)
 
