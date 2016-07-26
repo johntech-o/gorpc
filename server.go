@@ -200,6 +200,10 @@ fail:
 	return
 }
 
+func (server *Server) Status() *ServerStatusPerSecond {
+	return server.status.Status()
+}
+
 func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, cmd string) {
 
 	respHeader := NewResponseHeader()

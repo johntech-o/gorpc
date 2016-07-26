@@ -7,7 +7,7 @@ import (
 
 const (
 	RequestSendOnly   int16 = 1
-	MaxPendingRequest int   = 2000
+	MaxPendingRequest int   = 500
 )
 
 type Request struct {
