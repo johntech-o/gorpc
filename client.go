@@ -1,7 +1,7 @@
 // @todo while conn broke ,move the pending request to other -> done
 // @todo call with retry setting -> done
 // @todo send only call -> done
-// @todo calculate Bandwidth consumpTionJ
+// @todo calculate Bandwidth consumption
 
 package gorpc
 
@@ -113,7 +113,7 @@ func (this *Client) SetServiceNetOptions(service string, netOptions *NetOptions)
 
 func (this *Client) SetMethodNetOptinons(service, method string, netOptions *NetOptions) error {
 	this.Lock()
-	if _, ok := this.methodOptions[service][method]; !ok {
+	if _, ok := this.methodOptions[service]; !ok {
 		this.methodOptions[service] = make(map[string]*NetOptions)
 	}
 	this.methodOptions[service][method] = netOptions
