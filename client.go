@@ -7,14 +7,18 @@ package gorpc
 
 import (
 	"encoding/json"
-	// "fmt"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/johntech-o/timewheel"
 )
 
 const (
 	CALL_RETRY_TIMES = 1
+
+	TIME_WHEEL_BUCKET   = 600
+	TIME_WHEEL_INTERVAL = time.Second
 )
 
 type NetOptions struct {
@@ -161,14 +165,14 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	presp = NewPendingResponse()
 	presp.reply = reply
 	retryTimes := 0
-	timer := time.NewTimer(readTimeout + writeTimeout)
-	defer timer.Stop()
+	timer := timewheel.NewTimer(readTimeout + writeTimeout)
 Retry:
 	if err = this.transfer(rpcConn, request, presp); err != nil {
 		goto final
 	}
 
 	select {
+	// overload of server will cause timeout
 	case <-timer.C:
 		request.freePending()
 		err = ErrRequestTimeout

@@ -2,6 +2,7 @@ package gorpc
 
 import (
 	"errors"
+	"sync"
 	// "fmt"
 	"log"
 	"net"
@@ -20,11 +21,47 @@ const (
 	CmdTypeAck  = "ack"
 )
 
+const (
+	TimerPoolSize = 10
+)
+
+type connsMap struct {
+	conns map[ConnId]*ConnDriver
+	sync.RWMutex
+}
+
+type TimerPool [TimerPoolSize]*connsMap
+
+func NewTimerPool() *TimerPool {
+	tp := &TimerPool{}
+	for index, _ := range tp {
+		tp[index] = &connsMap{conns: make(map[ConnId]*ConnDriver)}
+	}
+	return tp
+}
+
+func (tp *TimerPool) AddConn(conn *ConnDriver) {
+	index := conn.connId % TimerPoolSize
+	tp[index].Lock()
+	tp[index].conns[conn.connId] = conn
+	tp[index].Unlock()
+
+}
+
+func (tp *TimerPool) RemoveConn(conn *ConnDriver) {
+	index := conn.connId % TimerPoolSize
+	tp[index].Lock()
+	delete(tp[index].conns, conn.connId)
+	tp[index].Unlock()
+
+}
+
 type Server struct {
 	serviceMap map[string]*service
 	listener   *net.TCPListener
 	codec      int
 	status     *ServerStatus
+	timerPool  *TimerPool
 }
 
 func NewServer(Address string) *Server {
@@ -41,8 +78,10 @@ func NewServer(Address string) *Server {
 		listener:   listener,
 		codec:      GobCodec,
 		status:     &ServerStatus{},
+		timerPool:  NewTimerPool(),
 	}
 	s.Register(&RpcStatus{s})
+	go s.serveTimerManage()
 	return s
 }
 
@@ -58,9 +97,36 @@ func (server *Server) Serve() {
 	}
 }
 
+// serve  read write deadline-timer of conn
 func (server *Server) serveConn(conn *net.TCPConn) {
 	rpcConn := NewConnDriver(conn, server)
+	server.timerPool.AddConn(rpcConn)
 	server.ServeLoop(rpcConn)
+	server.timerPool.RemoveConn(rpcConn)
+}
+
+// dead-lock review timerPool.lock -> conn.timeLock
+func (server *Server) serveTimerManage() {
+	for i := 0; i < TimerPoolSize; i++ {
+		go func(pool *connsMap) {
+			connsTimeout := make([]*ConnDriver, 100)[0:0]
+			for {
+				now := time.Now()
+				pool.Lock()
+				for _, conn := range pool.conns {
+					conn.timeLock.RLock()
+					if conn.readDeadline.Before(now) || conn.writeDeadline.Before(now) {
+						connsTimeout = append(connsTimeout, conn)
+					}
+					conn.timeLock.RUnlock()
+				}
+				pool.Unlock()
+				time.Sleep(DefaultServerTimerGCInterval)
+			}
+
+		}(server.timerPool[i])
+	}
+
 }
 
 // serve connection, read request and call service
