@@ -21,7 +21,7 @@ func (this *ConnId) Incr() ConnId {
 // use by client
 var clientConnId ConnId
 
-// user by server
+// use by server
 var serverConnId ConnId
 
 type Connection struct {

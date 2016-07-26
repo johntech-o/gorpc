@@ -7,10 +7,11 @@ package gorpc
 
 import (
 	"encoding/json"
-	// "fmt"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/johntech-o/timewheel"
 )
 
 const (
@@ -47,17 +48,6 @@ type Client struct {
 	serviceOptions map[string]*NetOptions
 	methodOptions  map[string]map[string]*NetOptions
 	serverOptions  *NetOptions
-	timer          *TimeWheel
-}
-
-type Timer struct {
-	C <-chan struct{}
-}
-
-func (t *Timer) stop() {}
-
-func (this *Client) NewTimer(timeout time.Duration) *Timer {
-	return &Timer{C: this.timer.After(timeout)}
 }
 
 func NewClient(netOptions *NetOptions) *Client {
@@ -66,7 +56,6 @@ func NewClient(netOptions *NetOptions) *Client {
 		serverOptions:  netOptions,
 		serviceOptions: make(map[string]*NetOptions),
 		methodOptions:  make(map[string]map[string]*NetOptions),
-		timer:          NewTimeWheel(TIME_WHEEL_INTERVAL, TIME_WHEEL_BUCKET),
 	}
 	return &c
 }
@@ -176,7 +165,7 @@ func (this *Client) CallWithAddress(serverAddress, service, method string, args 
 	presp = NewPendingResponse()
 	presp.reply = reply
 	retryTimes := 0
-	timer := client.NewTimer(readTimeout + writeTimeout)
+	timer := timewheel.NewTimer(readTimeout + writeTimeout)
 Retry:
 	if err = this.transfer(rpcConn, request, presp); err != nil {
 		goto final
