@@ -208,6 +208,10 @@ fail:
 	return
 }
 
+func (server *Server) Status() *ServerStatusPerSecond {
+	return server.status.Status()
+}
+
 // send respHeader to client with nil response body
 func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, cmd string) {
 
