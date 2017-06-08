@@ -16,9 +16,6 @@ import (
 
 const (
 	CALL_RETRY_TIMES = 1
-
-	TIME_WHEEL_BUCKET   = 600
-	TIME_WHEEL_INTERVAL = time.Second
 )
 
 type NetOptions struct {
