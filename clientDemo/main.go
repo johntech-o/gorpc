@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"sync"
 	"time"
-	"utility/gorpc"
-	"utility/gorpc/data"
-	"utility/gorpc/pprof"
+
+	"github.com/johntech-o/gorpc"
+	"github.com/johntech-o/gorpc/data"
 )
 
 var client, client2 *gorpc.Client
@@ -28,27 +28,6 @@ func main() {
 	flag.IntVar(&G, "g", 1000000, "amount of goroutine")
 	flag.IntVar(&C, "c", 10, "amount of rpc call per goroutine")
 	flag.Parse()
-	// go func() {
-
-	// 	var lastQps string
-	// 	for {
-	// 		qps := client.Qps()
-	// 		if qps != lastQps {
-	// 			fmt.Println("client conn Qps: ", qps)
-	// 			lastQps = qps
-	// 			var reply string
-	// 			if err := client2.CallWithAddress(I, "RpcStatus", "CallStatus", false, &reply); err == nil {
-	// 				fmt.Println("-----------------server status: ", reply)
-	// 			} else {
-	// 				fmt.Println("----------------server call amount error: ", err)
-	// 			}
-	// 		}
-	// 		// pprof.DoMemoryStats(false)
-	// 		// pprof.DoProcessStat()
-	// 		time.Sleep(time.Second * 5)
-
-	// 	}
-	// }()
 	EchoStruct(G)
 	time.Sleep(3600e9)
 }
@@ -117,7 +96,6 @@ func EchoStruct(testCount int) {
 	}
 	fmt.Println("---------------------time cost: ", counter.timeCost(), "QPS is", counter.QPS())
 	fmt.Println("---------------------memstat: ")
-	pprof.DoMemoryStats(true)
 	fmt.Println("\n\n\n")
 
 }
