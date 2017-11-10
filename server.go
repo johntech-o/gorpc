@@ -97,6 +97,10 @@ func (server *Server) Serve() {
 	}
 }
 
+func (server *Server) Close() error {
+	return server.listener.Close()
+}
+
 // serve  read write deadline-timer of conn
 func (server *Server) serveConn(conn *net.TCPConn) {
 	rpcConn := NewConnDriver(conn, server)
