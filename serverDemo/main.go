@@ -4,9 +4,10 @@ import (
 	"flag"
 	"runtime"
 	"time"
-	"utility/gorpc"
-	"utility/gorpc/data"
-	// "utility/gorpc/pprof"
+
+	"github.com/johntech-o/gorpc"
+	"github.com/johntech-o/gorpc/data"
+	// "github.com/johntech-o/gorpc/pprof"
 )
 
 var L string

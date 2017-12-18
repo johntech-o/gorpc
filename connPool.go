@@ -156,6 +156,7 @@ func (cp *ConnPool) RemoveConn(conn *ConnDriver) {
 func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	var err error
 	for {
+		// if write encode error, set err info from write goroutine
 		rpcConn.Lock()
 		if rpcConn.netError != nil {
 			err = rpcConn.netError
@@ -209,14 +210,13 @@ func (cp *ConnPool) serveRead(rpcConn *ConnDriver) {
 	if rpcConn.isCloseByGCTimer() {
 		err = ErrNetReadDeadlineArrive
 	}
-	cp.Lock()
 	rpcConn.Lock()
 	rpcConn.netError = err
 	rmap := rpcConn.ClearPendingResponses()
 	rpcConn.Unlock()
+	cp.Lock()
 	cp.RemoveConn(rpcConn)
 	cp.Unlock()
-	// @todo race condition detect
 	rpcConn.Close()
 	close(rpcConn.pendingRequests)
 	for _, resp := range rmap {

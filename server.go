@@ -2,11 +2,10 @@ package gorpc
 
 import (
 	"errors"
-	"sync"
-	// "fmt"
 	"log"
 	"net"
 	"reflect"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -81,7 +80,7 @@ func NewServer(Address string) *Server {
 		timerPool:  NewTimerPool(),
 	}
 	s.Register(&RpcStatus{s})
-	go s.serveTimerManage()
+	go s.GCTimer()
 	return s
 }
 
@@ -110,10 +109,10 @@ func (server *Server) serveConn(conn *net.TCPConn) {
 }
 
 // dead-lock review timerPool.lock -> conn.timeLock
-func (server *Server) serveTimerManage() {
+func (server *Server) GCTimer() {
 	for i := 0; i < TimerPoolSize; i++ {
 		go func(pool *connsMap) {
-			connsTimeout := make([]*ConnDriver, 100)[0:0]
+			connsTimeout := make([]*ConnDriver, 0, 10)
 			for {
 				now := time.Now()
 				pool.Lock()
@@ -125,6 +124,13 @@ func (server *Server) serveTimerManage() {
 					conn.timeLock.RUnlock()
 				}
 				pool.Unlock()
+				for _, conn := range connsTimeout {
+					conn.timeLock.Lock()
+					conn.closeByTimerGC = true
+					conn.timeLock.Unlock()
+					conn.Close()
+				}
+				connsTimeout = connsTimeout[0:0]
 				time.Sleep(DefaultServerTimerGCInterval)
 			}
 
@@ -198,9 +204,11 @@ func (server *Server) ServeLoop(conn *ConnDriver) {
 fail:
 	server.status.IncrErrorAmount()
 	conn.Lock()
-	conn.netError = err
+	if conn.netError != nil {
+		conn.netError = err
+	}
 	conn.Unlock()
-	conn.Close()
+	conn.Close() // close by timerGC will double close
 	return
 }
 
@@ -208,6 +216,7 @@ func (server *Server) Status() *ServerStatusPerSecond {
 	return server.status.Status()
 }
 
+// send respHeader to client with nil response body
 func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, cmd string) {
 
 	respHeader := NewResponseHeader()
@@ -223,8 +232,11 @@ func (server *Server) replyCmd(conn *ConnDriver, seq uint64, serverErr *Error, c
 		// fmt.Println("replycmd send respHeader type error")
 	}
 	conn.Lock()
-	server.SendFrame(conn, respHeader, reflect.ValueOf(nil))
+	err := server.SendFrame(conn, respHeader, reflect.ValueOf(nil))
 	conn.Unlock()
+	if err != nil && !isNetError(err) {
+		log.Fatalln("encoding error:" + err.Error())
+	}
 	return
 }
 
@@ -269,6 +281,8 @@ func (server *Server) callService(conn *ConnDriver, seq uint64, service *service
 	return
 }
 
+// send request Header and body to client if encoding error not net error
+// stop write subsequence frame  and panic
 func (server *Server) SendFrame(conn *ConnDriver, respHeader *ResponseHeader, replyv reflect.Value) error {
 	var err error
 	if conn.netError != nil {
