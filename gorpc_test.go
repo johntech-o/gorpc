@@ -1,5 +1,4 @@
 // go test -v github.com/johntech-o/gorpc
-
 package gorpc
 
 import (
@@ -10,12 +9,12 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
-	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/johntech-o/gorpc/pprof"
+	"github.com/johntech-o/gorpc/utility/pprof"
+	cal"github.com/johntech-o/gorpc/utility/calculator"
 )
 
 var client *Client
@@ -194,7 +193,7 @@ func TestEchoStruct(t *testing.T) {
 		sync.Mutex
 	}{content: make(map[string]int, 1000)}
 
-	var counter = NewCallCalculator()
+	var counter = cal.NewCallCalculator()
 	var wgCreate sync.WaitGroup
 	var wgFinish sync.WaitGroup
 	var startRequestCh = make(chan struct{})
@@ -244,104 +243,4 @@ func TestEchoStruct(t *testing.T) {
 	counter.Summary()
 	fmt.Printf("Max Client Qps: %d \n", MaxQps)
 	time.Sleep(time.Microsecond)
-}
-
-type CallTimer struct {
-	id        uint64
-	startTime time.Time
-	endTime   time.Time
-}
-
-type CallCalculator struct {
-	sync.Mutex
-	id           int
-	fields       map[int]*CallTimer
-	fieldsSorted []*CallTimer
-	rangeResult  map[float64]time.Duration // ratio:qps
-}
-
-var SummaryRatio = []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
-
-func NewCallCalculator() *CallCalculator {
-	c := &CallCalculator{
-		fields:       make(map[int]*CallTimer, 1000000),
-		fieldsSorted: make([]*CallTimer, 0, 1000000),
-		rangeResult:  map[float64]time.Duration{},
-	}
-	for _, ratio := range SummaryRatio {
-		c.rangeResult[ratio] = 0
-	}
-	return c
-}
-
-func (c CallCalculator) Len() int { return len(c.fieldsSorted) }
-
-func (c CallCalculator) Swap(i, j int) {
-	c.fieldsSorted[i], c.fieldsSorted[j] = c.fieldsSorted[j], c.fieldsSorted[i]
-}
-func (c CallCalculator) Less(i, j int) bool {
-	return c.fieldsSorted[i].endTime.Sub(c.fieldsSorted[i].startTime) < c.fieldsSorted[j].endTime.Sub(c.fieldsSorted[j].startTime)
-}
-
-func (c *CallCalculator) Start() (index int) {
-	c.Lock()
-	index = c.id
-	c.fields[c.id] = &CallTimer{startTime: time.Now()}
-	c.id++
-	c.Unlock()
-	return
-}
-
-func (c *CallCalculator) End(index int) {
-	c.Lock()
-	c.fields[index].endTime = time.Now()
-	c.Unlock()
-}
-
-func (c *CallCalculator) sort() {
-	if len(c.fieldsSorted) == 0 {
-		for _, v := range c.fields {
-			c.fieldsSorted = append(c.fieldsSorted, v)
-		}
-		sort.Sort(c)
-	}
-}
-
-func (c *CallCalculator) Summary() {
-	c.sort()
-
-	var timeCost time.Duration
-	indexToCal := make(map[int]float64)
-	for ratio, _ := range c.rangeResult {
-		index := int(float64(len(c.fieldsSorted)) * ratio)
-		indexToCal[index-1] = ratio
-	}
-
-	minStartTime, maxEndTime := time.Now(), time.Time{}
-
-	for index, v := range c.fieldsSorted {
-		if v.startTime.Before(minStartTime) {
-			minStartTime = v.startTime
-		}
-		if v.endTime.After(maxEndTime) {
-			maxEndTime = v.endTime
-		}
-		if v.endTime.Sub(v.startTime) > timeCost {
-			timeCost = v.endTime.Sub(v.startTime)
-		}
-		if ratio, ok := indexToCal[index]; ok {
-			c.rangeResult[ratio] = timeCost
-		}
-	}
-
-	for _, ratio := range SummaryRatio {
-		timeCost = c.rangeResult[ratio]
-		callsRatio := int(100 * ratio)
-		maxTimeCost := int(timeCost / time.Millisecond)
-
-		fmt.Printf("%3d%% calls consume less than %d ms \n", callsRatio, maxTimeCost)
-	}
-	costSeconds := int64(maxEndTime.Sub(minStartTime)) / int64(time.Second)
-	qps := int64(len(c.fieldsSorted)) * int64(time.Second) / int64(maxEndTime.Sub(minStartTime))
-	fmt.Printf("request amount: %d, cost times : %d second, average Qps: %d \n", len(c.fieldsSorted), costSeconds, qps)
 }

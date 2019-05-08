@@ -39,7 +39,6 @@ var (
 )
 
 // user defined error, error code > 10000
-
 type Error struct {
 	Code   int
 	Type   int
@@ -51,22 +50,22 @@ func NewError(code, typ int, reason string) *Error {
 }
 
 //params err can not be a nil of *Error
-func (this *Error) SetError(err error) *Error {
-	e := *this
+func (er *Error) SetError(err error) *Error {
+	e := *er
 	if err != nil {
 		e.Reason = err.Error()
 	}
 	return &e
 }
 
-func (this *Error) SetReason(err string) *Error {
-	e := *this
+func (er *Error) SetReason(err string) *Error {
+	e := *er
 	e.Reason = err
 	return &e
 }
 
 // gob error stop retry
-// errer type is not ErrTypeCanRetry stop retry
+// error type is not ErrTypeCanRetry stop retry
 func CanRetry(err *Error) bool {
 	if err == nil {
 		return false
@@ -77,12 +76,12 @@ func CanRetry(err *Error) bool {
 	return (err.Type & ErrTypeCanRetry) > 0
 }
 
-func (this Error) Error() string {
-	return fmt.Sprintf("code: %d type: %d reason: %s", this.Code, this.Type, this.Reason)
+func (er Error) Error() string {
+	return fmt.Sprintf("code: %d type: %d reason: %s", er.Code, er.Type, er.Reason)
 }
 
-func (this Error) Errno() int {
-	return this.Code
+func (er Error) Errno() int {
+	return er.Code
 }
 
 func IsRpcError(err interface{}) bool {

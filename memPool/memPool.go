@@ -7,7 +7,7 @@ import (
 	"math"
 	"sync/atomic"
 	"unsafe"
-	"github.com/johntech-o/gorpc/utility"
+	"github.com/johntech-o/gorpc/utility/convert"
 )
 
 func init() {

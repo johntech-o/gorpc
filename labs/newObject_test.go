@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/johntech-o/gorpc/pprof"
+	"github.com/johntech-o/gorpc/utility/pprof"
 )
 
 // new object in goroutines then view gc statistics
