@@ -21,7 +21,7 @@ import (
 var client *Client
 
 const (
-	ExecGoroutines    = 10000
+	ExecGoroutines    = 1000
 	ExecPerGoroutines = 1000
 )
 
